@@ -441,26 +441,11 @@ class ExcelWriter(object):
         self.cur_sheet = None
 
         if date_format is None:
-            self.date_format = locale.nl_langinfo(locale.D_FMT).\
-                replace('%m', 'MM').\
-                replace('%d', 'DD').\
-                replace('%Y', 'YYYY').\
-                replace('%y', 'YY').\
-                replace('/', '\\/')
+            self.date_format = 'YYYY-MM-DD'
         else:
             self.date_format = date_format
         if datetime_format is None:
-            self.datetime_format = locale.nl_langinfo(locale.D_FMT).\
-                replace('%m', 'MM').\
-                replace('%d', 'DD').\
-                replace('%Y', 'YYYY').\
-                replace('%y', 'YY').\
-                replace('/', '\\/') + ' ' +\
-                locale.nl_langinfo(locale.T_FMT).\
-                replace('%H', 'HH').\
-                replace('%M', 'MM').\
-                replace('%S', 'SS').\
-                replace('/', '\\/')
+            self.datetime_format = 'YYYY-MM-DD HH:MM:SS'
         else:
             self.datetime_format = datetime_format
 
