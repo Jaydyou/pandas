@@ -6,7 +6,6 @@ Module parse to/from Excel
 # ExcelFile class
 import os
 import datetime
-import locale
 import abc
 import numpy as np
 
