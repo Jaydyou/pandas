@@ -355,6 +355,11 @@ class ExcelWriter(object):
         Engine to use for writing. If None, defaults to
         ``io.excel.<extension>.writer``.  NOTE: can only be passed as a keyword
         argument.
+    date_format : string, default None
+        Format string for dates written into Excel files (e.g. 'YYYY-MM-DD')
+    datetime_format : sting, default None
+        Format string for datetime objects written into Excel files 
+        (e.g. 'YYYY-MM-DD HH:MM:SS')
     """
     # Defining an ExcelWriter implementation (see abstract methods for more...)
 
