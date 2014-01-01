@@ -357,7 +357,7 @@ class ExcelWriter(object):
         argument.
     date_format : string, default None
         Format string for dates written into Excel files (e.g. 'YYYY-MM-DD')
-    datetime_format : sting, default None
+    datetime_format : string, default None
         Format string for datetime objects written into Excel files 
         (e.g. 'YYYY-MM-DD HH:MM:SS')
     """

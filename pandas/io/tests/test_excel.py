@@ -1,7 +1,7 @@
 # pylint: disable=E1101
 
 from pandas.compat import u, range, map
-from datetime import datetime
+from datetime import datetime, date
 import os
 import unittest
 
@@ -662,11 +662,18 @@ class ExcelWriterBase(SharedItems):
             recons = reader.parse('test1')
             tm.assert_frame_equal(self.tsframe, recons)
 
-    def text_excel_date_datetime_format(self):
-        df = DataFrame([[datetime.date(2014, 1, 31), datetime.date(1999, 9, 24)],
-                        [datetime.datetime(1998, 5, 26, 23, 33, 4),
-                        datetime.datetime(2014, 2, 28, 13, 5, 13)]],
-                        index=['DATE', 'DATETIME'], columns=['X', 'Y'])
+    # GH4133 - excel output format strings
+    def test_excel_date_datetime_format(self):
+        df = DataFrame([[date(2014, 1, 31),
+                         date(1999, 9, 24)],
+                        [datetime(1998, 5, 26, 23, 33, 4),
+                         datetime(2014, 2, 28, 13, 5, 13)]],
+                       index=['DATE', 'DATETIME'], columns=['X', 'Y'])
+        df_expected = DataFrame([[datetime(2014, 1, 31),
+                                  datetime(1999, 9, 24)],
+                                 [datetime(1998, 5, 26, 23, 33, 4),
+                                  datetime(2014, 2, 28, 13, 5, 13)]],
+                                index=['DATE', 'DATETIME'], columns=['X', 'Y'])
 
         with ensure_clean(self.ext) as filename1:
             with ensure_clean(self.ext) as filename2:
@@ -686,9 +693,12 @@ class ExcelWriterBase(SharedItems):
                 
                 rs1 = reader1.parse('test1', index_col=None)
                 rs2 = reader2.parse('test1', index_col=None)
-                
-                tm.assert_frame_equal(rs1, df)
-                tm.assert_frame_equal(rs2, df)
+               
+                tm.assert_frame_equal(rs1, rs2)
+
+                # since the reader returns a datetime object for dates, we need
+                # to use df_expected to check the result         
+                tm.assert_frame_equal(rs2, df_expected)
 
     def test_to_excel_periodindex(self):
         _skip_if_no_xlrd()
