@@ -714,11 +714,14 @@ class _XlsxWriter(ExcelWriter):
     engine = 'xlsxwriter'
     supported_extensions = ('.xlsx',)
 
-    def __init__(self, path, engine=None, **engine_kwargs):
+    def __init__(self, path, engine=None, 
+                 date_format=None, datetime_format=None, **engine_kwargs):
         # Use the xlsxwriter module as the Excel writer.
         import xlsxwriter
 
-        super(_XlsxWriter, self).__init__(path, engine=engine, **engine_kwargs)
+        super(_XlsxWriter, self).__init__(path, engine=engine, 
+            date_format=date_format, datetime_format=datetime_format,
+            **engine_kwargs)
 
         self.book = xlsxwriter.Workbook(path, **engine_kwargs)
 
@@ -777,12 +780,16 @@ class _XlsxWriter(ExcelWriter):
         style_dict: style dictionary to convert
         num_format_str: optional number format string
         """
-        if style_dict is None:
-            return None
 
         # Create a XlsxWriter format object.
         xl_format = self.book.add_format()
+        
+        if num_format_str is not None:
+            xl_format.set_num_format(num_format_str)
 
+        if style_dict is None:
+            return xl_format
+        
         # Map the cell font to XlsxWriter font properties.
         if style_dict.get('font'):
             font = style_dict['font']
@@ -802,9 +809,6 @@ class _XlsxWriter(ExcelWriter):
         # Map the cell borders to XlsxWriter border properties.
         if style_dict.get('borders'):
             xl_format.set_border()
-
-        if num_format_str is not None:
-            xl_format.set_num_format(num_format_str)
 
         return xl_format
 
