@@ -53,6 +53,9 @@ pandas 0.13.1
 New features
 ~~~~~~~~~~~~
 
+  - Added ``date_format`` and ``datetime_format`` attribute to ExcelWriter.
+    (:issue:`4133`)
+
 API Changes
 ~~~~~~~~~~~
 
@@ -102,8 +105,6 @@ New features
   - Added ``FY5253``, and ``FY5253Quarter`` DateOffsets (:issue:`4511`)
   - Added ``mode()`` method to ``Series`` and ``DataFrame`` to get the
     statistical mode(s) of a column/series. (:issue:`5367`)
-  - Added ``date_format`` and ``datetime_format`` attribute to ExcelWriter.
-    (:issue:`4133`)
 
 Experimental Features
 ~~~~~~~~~~~~~~~~~~~~~
