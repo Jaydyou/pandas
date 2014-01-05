@@ -20,6 +20,7 @@
    plt.close('all')
 
    from pandas import *
+   options.display.max_rows=15
    import pandas.util.testing as tm
 
 *************
@@ -44,10 +45,41 @@ analysis / manipulation tool available in any language.
 * Binary installers on PyPI: http://pypi.python.org/pypi/pandas
 * Documentation: http://pandas.pydata.org
 
-pandas 0.13.0
+pandas 0.13.1
 -------------
 
 **Release date:** not-yet-released
+
+New features
+~~~~~~~~~~~~
+
+API Changes
+~~~~~~~~~~~
+
+.. _release.bug_fixes-0.13.1:
+
+Experimental Features
+~~~~~~~~~~~~~~~~~~~~~
+
+Improvements to existing features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  - perf improvements in Series datetime/timedelta binary operations (:issue:`5801`)
+  - `option_context` context manager now available as top-level API (:issue:`5752`)
+  - df.info() view now display dtype info per column (:issue: `5682`)
+  - perf improvements in DataFrame ``count/dropna`` for ``axis=1``
+
+Bug Fixes
+~~~~~~~~~
+  - Bug in Series replace with timestamp dict (:issue:`5797`)
+  - read_csv/read_table now respects the `prefix` kwarg (:issue:`5732`).
+  - Bug in selection with missing values via ``.ix`` from a duplicate indexed DataFrame failing (:issue:`5835`)
+  - Fix issue of boolean comparison on empty DataFrames (:issue:`5808`)
+
+pandas 0.13.0
+-------------
+
+**Release date:** January 3, 2014
 
 New features
 ~~~~~~~~~~~~
@@ -127,7 +159,7 @@ Improvements to existing features
     (:issue:`4039`) with improved validation for all (:issue:`4039`,
     :issue:`4794`)
   - A Series of dtype ``timedelta64[ns]`` can now be divided/multiplied
-    by an integer series (:issue`4521`)
+    by an integer series (:issue:`4521`)
   - A Series of dtype ``timedelta64[ns]`` can now be divided by another
     ``timedelta64[ns]`` object to yield a ``float64`` dtyped Series. This
     is frequency conversion; astyping is also supported.
@@ -210,7 +242,7 @@ Improvements to existing features
   - ``NDFrame.drop()``, ``NDFrame.dropna()``, and ``.drop_duplicates()`` all
     accept ``inplace`` as a kewyord argument; however, this only means that the
     wrapper is updated inplace, a copy is still made internally.
-    (:issue:`1960`, :issue:`5247`, and related :issue:`2325` [still not
+    (:issue:`1960`, :issue:`5247`, :issue:`5628`, and related :issue:`2325` [still not
     closed])
   - Fixed bug in `tools.plotting.andrews_curvres` so that lines are drawn grouped
     by color as expected.
@@ -221,6 +253,8 @@ Improvements to existing features
     option it is no longer possible to round trip Excel files with merged
     MultiIndex and Hierarchical Rows. Set the ``merge_cells`` to ``False`` to
     restore the previous behaviour.  (:issue:`5254`)
+  - The FRED DataReader now accepts multiple series (:issue`3413`)
+  - StataWriter adjusts variable names to Stata's limitations (:issue:`5709`)
 
 API Changes
 ~~~~~~~~~~~
@@ -246,7 +280,8 @@ API Changes
     (:issue:`4390`)
   - allow ``ix/loc`` for Series/DataFrame/Panel to set on any axis even when
     the single-key is not currently contained in the index for that axis
-    (:issue:`2578`, :issue:`5226`)
+    (:issue:`2578`, :issue:`5226`, :issue:`5632`, :issue:`5720`,
+    :issue:`5744`, :issue:`5756`)
   - Default export for ``to_clipboard`` is now csv with a sep of `\t` for
     compat (:issue:`3368`)
   - ``at`` now will enlarge the object inplace (and return the same)
@@ -387,6 +422,8 @@ API Changes
     dates are given (:issue:`5242`)
   - ``Timestamp`` now supports ``now/today/utcnow`` class methods
     (:issue:`5339`)
+  - default for `display.max_seq_len` is now 100 rather then `None`. This activates
+    truncated display ("...") of long sequences in various places. (:issue:`3391`)
   - **All** division with ``NDFrame`` - likes is now truedivision, regardless
     of the future import. You can use ``//`` and ``floordiv`` to do integer
     division.
@@ -410,6 +447,11 @@ API Changes
 
   - raise/warn ``SettingWithCopyError/Warning`` exception/warning when setting of a
     copy thru chained assignment is detected, settable via option ``mode.chained_assignment``
+  - test the list of ``NA`` values in the csv parser. add ``N/A``, ``#NA`` as independent default
+    na values (:issue:`5521`)
+  - The refactoring involving``Series`` deriving from ``NDFrame`` breaks ``rpy2<=2.3.8``. an Issue
+    has been opened against rpy2 and a workaround is detailed in :issue:`5698`. Thanks @JanSchulz.
+
 
 Internal Refactoring
 ~~~~~~~~~~~~~~~~~~~~
@@ -547,6 +589,8 @@ Bug Fixes
     - A zero length series written in Fixed format not deserializing properly.
       (:issue:`4708`)
     - Fixed decoding perf issue on pyt3 (:issue:`5441`)
+    - Validate levels in a multi-index before storing (:issue:`5527`)
+    - Correctly handle ``data_columns`` with a Panel (:issue:`5717`)
   - Fixed bug in tslib.tz_convert(vals, tz1, tz2): it could raise IndexError
     exception while trying to access trans[pos + 1] (:issue:`4496`)
   - The ``by`` argument now works correctly with the ``layout`` argument
@@ -633,8 +677,8 @@ Bug Fixes
     (causing the original stack trace to be truncated).
   - Fix selection with ``ix/loc`` and non_unique selectors (:issue:`4619`)
   - Fix assignment with iloc/loc involving a dtype change in an existing column
-    (:issue:`4312`) have internal setitem_with_indexer in core/indexing to use
-    Block.setitem
+    (:issue:`4312`, :issue:`5702`) have internal setitem_with_indexer in core/indexing
+    to use Block.setitem
   - Fixed bug where thousands operator was not handled correctly for floating
     point numbers in csv_import (:issue:`4322`)
   - Fix an issue with CacheableOffset not properly being used by many
@@ -765,7 +809,7 @@ Bug Fixes
   - Fixed segfault on ``isnull(MultiIndex)`` (now raises an error instead)
     (:issue:`5123`, :issue:`5125`)
   - Allow duplicate indices when performing operations that align
-    (:issue:`5185`)
+    (:issue:`5185`, :issue:`5639`)
   - Compound dtypes in a constructor raise ``NotImplementedError``
     (:issue:`5191`)
   - Bug in comparing duplicate frames (:issue:`4421`) related
@@ -816,6 +860,13 @@ Bug Fixes
   - Bug in delitem on a Series (:issue:`5542`)
   - Bug fix in apply when using custom function and objects are not mutated (:issue:`5545`)
   - Bug in selecting from a non-unique index with ``loc`` (:issue:`5553`)
+  - Bug in groupby returning non-consistent types when user function returns a ``None``, (:issue:`5592`)
+  - Work around regression in numpy 1.7.0 which erroneously raises IndexError from ``ndarray.item`` (:issue:`5666`)
+  - Bug in repeated indexing of object with resultant non-unique index (:issue:`5678`)
+  - Bug in fillna with Series and a passed series/dict (:issue:`5703`)
+  - Bug in groupby transform with a datetime-like grouper (:issue:`5712`)
+  - Bug in multi-index selection in PY3 when using certain keys (:issue:`5725`)
+  - Row-wise concat of differing dtypes failing in certain cases (:issue:`5754`)
 
 pandas 0.12.0
 -------------

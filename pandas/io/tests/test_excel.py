@@ -3,7 +3,6 @@
 from pandas.compat import u, range, map
 from datetime import datetime, date
 import os
-import unittest
 
 import nose
 
@@ -86,7 +85,7 @@ class SharedItems(object):
         return read_csv(*args, **kwds)
 
 
-class ExcelReaderTests(SharedItems, unittest.TestCase):
+class ExcelReaderTests(SharedItems, tm.TestCase):
     def test_parse_cols_int(self):
         _skip_if_no_openpyxl()
         _skip_if_no_xlrd()
@@ -488,7 +487,7 @@ class ExcelWriterBase(SharedItems):
                 frame.to_excel(path, 'test1')
                 reader = ExcelFile(path)
                 recons = reader.parse('test1')
-                int_frame = frame.astype(int)
+                int_frame = frame.astype(np.int64)
                 tm.assert_frame_equal(int_frame, recons)
                 recons2 = read_excel(path, 'test1')
                 tm.assert_frame_equal(int_frame, recons2)
@@ -616,7 +615,7 @@ class ExcelWriterBase(SharedItems):
                                   has_index_names=self.merge_cells
                                   ).astype(np.int64)
             frame.index.names = ['test']
-            self.assertAlmostEqual(frame.index.names, recons.index.names)
+            tm.assert_frame_equal(frame, recons.astype(bool))
 
         with ensure_clean(self.ext) as path:
 
@@ -753,6 +752,31 @@ class ExcelWriterBase(SharedItems):
 
             tm.assert_frame_equal(tsframe, recons)
             self.assertEquals(recons.index.names, ('time', 'foo'))
+
+    def test_to_excel_multiindex_no_write_index(self):
+        _skip_if_no_xlrd()
+
+        # Test writing and re-reading a MI witout the index. GH 5616.
+
+        # Initial non-MI frame.
+        frame1 = pd.DataFrame({'a': [10, 20], 'b': [30, 40], 'c': [50, 60]})
+
+        # Add a MI.
+        frame2 = frame1.copy()
+        multi_index = pd.MultiIndex.from_tuples([(70, 80), (90, 100)])
+        frame2.index = multi_index
+
+        with ensure_clean(self.ext) as path:
+
+            # Write out to Excel without the index.
+            frame2.to_excel(path, 'test1', index=False)
+
+            # Read it back in.
+            reader = ExcelFile(path)
+            frame3 = reader.parse('test1')
+
+            # Test that it is the same as the initial frame.
+            tm.assert_frame_equal(frame1, frame3)
 
     def test_to_excel_float_format(self):
         _skip_if_no_xlrd()
@@ -980,7 +1004,7 @@ class ExcelWriterBase(SharedItems):
             tm.assert_series_equal(write_frame['B'], read_frame['B'])
 
 
-class OpenpyxlTests(ExcelWriterBase, unittest.TestCase):
+class OpenpyxlTests(ExcelWriterBase, tm.TestCase):
     ext = '.xlsx'
     engine_name = 'openpyxl'
     check_skip = staticmethod(_skip_if_no_openpyxl)
@@ -1013,7 +1037,7 @@ class OpenpyxlTests(ExcelWriterBase, unittest.TestCase):
                           xlsx_style.alignment.vertical)
 
 
-class XlwtTests(ExcelWriterBase, unittest.TestCase):
+class XlwtTests(ExcelWriterBase, tm.TestCase):
     ext = '.xls'
     engine_name = 'xlwt'
     check_skip = staticmethod(_skip_if_no_xlwt)
@@ -1040,13 +1064,13 @@ class XlwtTests(ExcelWriterBase, unittest.TestCase):
         self.assertEquals(xlwt.Alignment.VERT_TOP, xls_style.alignment.vert)
 
 
-class XlsxWriterTests(ExcelWriterBase, unittest.TestCase):
+class XlsxWriterTests(ExcelWriterBase, tm.TestCase):
     ext = '.xlsx'
     engine_name = 'xlsxwriter'
     check_skip = staticmethod(_skip_if_no_xlsxwriter)
 
 
-class OpenpyxlTests_NoMerge(ExcelWriterBase, unittest.TestCase):
+class OpenpyxlTests_NoMerge(ExcelWriterBase, tm.TestCase):
     ext = '.xlsx'
     engine_name = 'openpyxl'
     check_skip = staticmethod(_skip_if_no_openpyxl)
@@ -1055,7 +1079,7 @@ class OpenpyxlTests_NoMerge(ExcelWriterBase, unittest.TestCase):
     merge_cells = False
 
 
-class XlwtTests_NoMerge(ExcelWriterBase, unittest.TestCase):
+class XlwtTests_NoMerge(ExcelWriterBase, tm.TestCase):
     ext = '.xls'
     engine_name = 'xlwt'
     check_skip = staticmethod(_skip_if_no_xlwt)
@@ -1064,7 +1088,7 @@ class XlwtTests_NoMerge(ExcelWriterBase, unittest.TestCase):
     merge_cells = False
 
 
-class XlsxWriterTests_NoMerge(ExcelWriterBase, unittest.TestCase):
+class XlsxWriterTests_NoMerge(ExcelWriterBase, tm.TestCase):
     ext = '.xlsx'
     engine_name = 'xlsxwriter'
     check_skip = staticmethod(_skip_if_no_xlsxwriter)
@@ -1073,7 +1097,7 @@ class XlsxWriterTests_NoMerge(ExcelWriterBase, unittest.TestCase):
     merge_cells = False
 
 
-class ExcelWriterEngineTests(unittest.TestCase):
+class ExcelWriterEngineTests(tm.TestCase):
     def test_ExcelWriter_dispatch(self):
         with tm.assertRaisesRegexp(ValueError, 'No engine'):
             ExcelWriter('nothing')
@@ -1084,12 +1108,15 @@ class ExcelWriterEngineTests(unittest.TestCase):
         except ImportError:
             _skip_if_no_openpyxl()
             writer_klass = _OpenpyxlWriter
-        writer = ExcelWriter('apple.xlsx')
-        tm.assert_isinstance(writer, writer_klass)
+
+        with ensure_clean('.xlsx') as path:
+            writer = ExcelWriter(path)
+            tm.assert_isinstance(writer, writer_klass)
 
         _skip_if_no_xlwt()
-        writer = ExcelWriter('apple.xls')
-        tm.assert_isinstance(writer, _XlwtWriter)
+        with ensure_clean('.xls') as path:
+            writer = ExcelWriter(path)
+            tm.assert_isinstance(writer, _XlwtWriter)
 
     def test_register_writer(self):
         # some awkward mocking to test out dispatch and such actually works

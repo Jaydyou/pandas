@@ -1,14 +1,32 @@
 .. _whatsnew_0130:
 
-v0.13.0 (October ??, 2013)
---------------------------
+v0.13.0 (January 3, 2014)
+---------------------------
 
 This is a major release from 0.12.0 and includes a number of API changes, several new features and
 enhancements along with a large number of bug fixes.
 
-Highlights include support for a new index type ``Float64Index``, support for new methods of interpolation, updated ``timedelta`` operations, and a new string manipulation method ``extract``.
-Several experimental features are added, including new ``eval/query`` methods for expression evaluation, support for ``msgpack`` serialization,
-and an io interface to Google's ``BigQuery``.
+Highlights include:
+
+- support for a new index type ``Float64Index``, and other Indexing enhancements
+- ``HDFStore`` has a new string based syntax for query specification
+- support for new methods of interpolation
+- updated ``timedelta`` operations
+- a new string manipulation method ``extract``
+- Nanosecond support for Offsets
+- ``isin`` for DataFrames
+
+Several experimental features are added, including:
+
+- new ``eval/query`` methods for expression evaluation
+- support for ``msgpack`` serialization
+- an i/o interface to Google's ``BigQuery``
+
+Their are several new or updated docs sections including:
+
+- :ref:`Comparison with SQL<compare_with_sql>`, which should be useful for those familiar with SQL but still learning pandas.
+- :ref:`Comparison with R<compare_with_r>`, idiom translations from R to pandas.
+- :ref:`Enhancing Performance<enhancingperf>`, ways to enhance pandas performance with ``eval/query``.
 
 .. warning::
 
@@ -55,9 +73,12 @@ API changes
       # and all methods take an inplace kwarg - but return None
       index.set_names(["bob", "cranberry"], inplace=True)
 
-- **All** division with ``NDFrame`` - likes is now truedivision, regardless
-  of the future import. You can use ``//`` and ``floordiv`` to do integer
-  division.
+- **All** division with ``NDFrame`` objects is now *truedivision*, regardless
+  of the future import. This means that operating on pandas objects will by default
+  use *floating point* division, and return a floating point dtype.
+  You can use ``//`` and ``floordiv`` to do integer division.
+
+  Integer division
 
   .. code-block:: python
 
@@ -68,8 +89,20 @@ API changes
       In [5]: arr / arr2
       Out[5]: array([0, 0, 1, 4])
 
-      In [6]: pd.Series(arr) / pd.Series(arr2) # no future import required
+      In [6]: Series(arr) // Series(arr2)
       Out[6]:
+      0    0
+      1    0
+      2    1
+      3    4
+      dtype: int64
+
+  True Division
+
+  .. code-block:: python
+
+      In [7]: pd.Series(arr) / pd.Series(arr2) # no future import required
+      Out[7]:
       0    0.200000
       1    0.666667
       2    1.500000
@@ -143,7 +176,10 @@ These were announced changes in 0.12 or prior that are taking effect as of 0.13.
 - Remove deprecated ``set_printoptions/reset_printoptions`` (:issue:`3046`)
 - Remove deprecated ``_verbose_info`` (:issue:`3215`)
 - Remove deprecated ``read_clipboard/to_clipboard/ExcelFile/ExcelWriter`` from ``pandas.io.parsers`` (:issue:`3717`)
+  These are available as functions in the main pandas namespace (e.g. ``pd.read_clipboard``)
 - default for ``tupleize_cols`` is now ``False`` for both ``to_csv`` and ``read_csv``. Fair warning in 0.12 (:issue:`3604`)
+- default for `display.max_seq_len` is now 100 rather then `None`. This activates
+  truncated display ("...") of long sequences in various places. (:issue:`3391`)
 
 Deprecations
 ~~~~~~~~~~~~
@@ -166,7 +202,7 @@ Indexing API Changes
 ~~~~~~~~~~~~~~~~~~~~
 
 Prior to 0.13, it was impossible to use a label indexer (``.loc/.ix``) to set a value that
-was not contained in the index of a particular axis. (:issue:`2578`). See more :ref:`the docs<indexing.basics.partial_setting>`
+was not contained in the index of a particular axis. (:issue:`2578`). See :ref:`the docs<indexing.basics.partial_setting>`
 
 In the ``Series`` case this is effectively an appending operation
 
@@ -310,7 +346,7 @@ HDFStore API Changes
      os.remove(path)
 
 - the ``format`` keyword now replaces the ``table`` keyword; allowed values are ``fixed(f)`` or ``table(t)``
-  the same defaults as prior < 0.13.0 remain, e.g. ``put`` implies ``fixed`` format and ``append`` implies 
+  the same defaults as prior < 0.13.0 remain, e.g. ``put`` implies ``fixed`` format and ``append`` implies
   ``table`` format. This default format can be set as an option by setting ``io.hdf.default_format``.
 
   .. ipython:: python
@@ -375,6 +411,22 @@ HDFStore API Changes
   via the option ``io.hdf.dropna_table`` (:issue:`4625`)
 - pass thru store creation arguments; can be used to support in-memory stores
 
+DataFrame repr Changes
+~~~~~~~~~~~~~~~~~~~~~~
+
+The HTML and plain text representations of :class:`DataFrame` now show
+a truncated view of the table once it exceeds a certain size, rather
+than switching to the short info view (:issue:`4886`, :issue:`5550`).
+This makes the representation more consistent as small DataFrames get
+larger.
+
+.. image:: _static/df_repr_truncated.png
+   :alt: Truncated HTML representation of a DataFrame
+
+To get the info view, call :meth:`DataFrame.info`. If you prefer the
+info view as the repr for large DataFrames, you can set this by running
+``set_option('display.large_repr', 'info')``.
+
 Enhancements
 ~~~~~~~~~~~~
 
@@ -401,7 +453,7 @@ Enhancements
      get_dummies([1, 2, np.nan], dummy_na=True)
 
 
-- ``timedelta64[ns]`` operations. See :ref:`the docs<timeseries.timedeltas_convert>` for the docs.
+- ``timedelta64[ns]`` operations. See :ref:`the docs<timeseries.timedeltas_convert>`.
 
   .. warning::
 
@@ -459,8 +511,7 @@ Enhancements
      td.fillna(0)
      td.fillna(timedelta(days=1,seconds=5))
 
-  You can do numeric reduction operations on timedeltas. Note that these will return
-  a single-element Series.
+  You can do numeric reduction operations on timedeltas.
 
   .. ipython:: python
 
@@ -565,7 +616,7 @@ Enhancements
 - ``tz_localize`` can infer a fall daylight savings transition based on the structure
   of the unlocalized data (:issue:`4230`), see :ref:`the docs<timeseries.timezone>`
 
-- DatetimeIndex is now in the API documentation, see :ref:`the docs<api.datetimeindex>`
+- ``DatetimeIndex`` is now in the API documentation, see :ref:`the docs<api.datetimeindex>`
 
 - :meth:`~pandas.io.json.json_normalize` is a new method to allow you to create a flat table
   from semi-structured JSON data. See :ref:`the docs<io.json_normalize>` (:issue:`1067`)
@@ -574,10 +625,13 @@ Enhancements
 
 - Python csv parser now supports usecols (:issue:`4335`)
 
-- DataFrame has a new ``interpolate`` method, similar to Series (:issue:`4434`, :issue:`1892`)
-- Added ``LastWeekOfMonth`` DateOffset (:issue:`4637`)
-- Added ``FY5253``, and ``FY5253Quarter`` DateOffsets (:issue:`4511`)
+- Frequencies gained several new offsets:
 
+  * ``LastWeekOfMonth`` (:issue:`4637`)
+  * ``FY5253``, and ``FY5253Quarter`` (:issue:`4511`)
+
+
+- DataFrame has a new ``interpolate`` method, similar to Series (:issue:`4434`, :issue:`1892`)
 
   .. ipython:: python
 
@@ -599,6 +653,21 @@ Enhancements
     ser = Series([1, 3, np.nan, np.nan, np.nan, 11])
     ser.interpolate(limit=2)
 
+- Added ``wide_to_long`` panel data convenience function. See :ref:`the docs<reshaping.melt>`.
+
+  .. ipython:: python
+
+    np.random.seed(123)
+    df = pd.DataFrame({"A1970" : {0 : "a", 1 : "b", 2 : "c"},
+                       "A1980" : {0 : "d", 1 : "e", 2 : "f"},
+                       "B1970" : {0 : 2.5, 1 : 1.2, 2 : .7},
+                       "B1980" : {0 : 3.2, 1 : 1.3, 2 : .1},
+                       "X"     : dict(zip(range(3), np.random.randn(3)))
+                      })
+    df["id"] = df.index
+    df
+    wide_to_long(df, ["A", "B"], i="id", j="year")
+
 .. _scipy: http://www.scipy.org
 .. _documentation: http://docs.scipy.org/doc/scipy/reference/interpolate.html#univariate-interpolation
 .. _guide: http://docs.scipy.org/doc/scipy/reference/tutorial/interpolate.html
@@ -607,6 +676,7 @@ Enhancements
   output datetime objects should be formatted. Datetimes encountered in the
   index, columns, and values will all have this formatting applied. (:issue:`4313`)
 - ``DataFrame.plot`` will scatter plot x versus y by passing ``kind='scatter'`` (:issue:`2215`)
+- Added support for Google Analytics v3 API segment IDs that also supports v2 IDs. (:issue:`5271`)
 
 .. _whatsnew_0130.experimental:
 
@@ -824,6 +894,11 @@ to unify methods and behaviors. Series formerly subclassed directly from
 
    - ``Series(0.5)`` would previously return the scalar ``0.5``, instead this will return a 1-element ``Series``
 
+   - This change breaks ``rpy2<=2.3.8``. an Issue has been opened against rpy2 and a workaround
+     is detailed in :issue:`5698`. Thanks @JanSchulz.
+
+- Pickle compatibility is preserved for pickles created prior to 0.13. These must be unpickled with ``pd.read_pickle``, see :ref:`Pickling<io.pickle>`.
+
 - Refactor of series.py/frame.py/panel.py to move common code to generic.py
 
   - added ``_setup_axes`` to created generic NDFrame structures
@@ -848,15 +923,8 @@ to unify methods and behaviors. Series formerly subclassed directly from
 
 - Reindex called with no arguments will now return a copy of the input object
 
-- Series now inherits from ``NDFrame`` rather than directly from ``ndarray``.
-  There are several minor changes that affect the API.
-
-  - numpy functions that do not support the array interface will now
-    return ``ndarrays`` rather than series, e.g. ``np.diff`` and ``np.ones_like``
-  - ``Series(0.5)`` would previously return the scalar ``0.5``, this is no
-    longer supported
-  - ``TimeSeries`` is now an alias for ``Series``. the property ``is_time_series``
-    can be used to distinguish (if desired)
+- ``TimeSeries`` is now an alias for ``Series``. the property ``is_time_series``
+  can be used to distinguish (if desired)
 
 - Refactor of Sparse objects to use BlockManager
 
@@ -875,7 +943,7 @@ to unify methods and behaviors. Series formerly subclassed directly from
 - added ``ftypes`` method to Series/DataFrame, similar to ``dtypes``, but indicates
   if the underlying is sparse/dense (as well as the dtype)
 - All ``NDFrame`` objects can now use ``__finalize__()`` to specify various
-  values to propagate to new objects from an existing one (e.g. ``name`` in ``Series`` will 
+  values to propagate to new objects from an existing one (e.g. ``name`` in ``Series`` will
   follow more automatically now)
 - Internal type checking is now done via a suite of generated classes, allowing ``isinstance(value, klass)``
   without having to directly import the klass, courtesy of @jtratner

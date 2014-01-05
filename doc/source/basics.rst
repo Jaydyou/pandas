@@ -9,6 +9,7 @@
    randn = np.random.randn
    np.set_printoptions(precision=4, suppress=True)
    from pandas.compat import lrange
+   options.display.max_rows=15
 
 ==============================
  Essential Basic Functionality
@@ -103,8 +104,8 @@ a set of specialized cython routines that are especially fast when dealing with 
 Here is a sample (using 100 column x 100,000 row ``DataFrames``):
 
 .. csv-table::
-    :header: "Operation", "0.11.0 (ms)", "Prior Vern (ms)", "Ratio to Prior"
-    :widths: 30, 30, 30, 30
+    :header: "Operation", "0.11.0 (ms)", "Prior Version (ms)", "Ratio to Prior"
+    :widths: 25, 25, 25, 25
     :delim: ;
 
     ``df1 > df2``; 13.32; 125.35;  0.1063
@@ -556,12 +557,11 @@ will either be of lower dimension or the same dimension.
 about a data set. For example, suppose we wanted to extract the date where the
 maximum value for each column occurred:
 
-
 .. ipython:: python
 
    tsdf = DataFrame(randn(1000, 3), columns=['A', 'B', 'C'],
                     index=date_range('1/1/2000', periods=1000))
-   tsdf.apply(lambda x: x[x.idxmax()])
+   tsdf.apply(lambda x: x.idxmax())
 
 You may also pass additional arguments and keyword arguments to the ``apply``
 method. For instance, consider the following function you would like to apply:
@@ -1029,7 +1029,7 @@ with more than one group returns a DataFrame with one column per group.
 
    Series(['a1', 'b2', 'c3']).str.extract('([ab])(\d)')
 
-Elements that do not match return a row of ``NaN``s.
+Elements that do not match return a row filled with ``NaN``.
 Thus, a Series of messy strings can be "converted" into a
 like-indexed Series or DataFrame of cleaned-up or more useful strings,
 without necessitating ``get()`` to access tuples or ``re.match`` objects.
@@ -1051,18 +1051,35 @@ can also be used.
 Testing for Strings that Match or Contain a Pattern
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In previous versions, *extracting* match groups was accomplished by ``match``,
-which returned a not-so-convenient Series of tuples. Starting in version 0.14,
-the default behavior of match will change. It will return a boolean
-indexer, analagous to the method ``contains``.
 
-The distinction between
-``match`` and ``contains`` is strictness: ``match`` relies on
-strict ``re.match`` while ``contains`` relies on ``re.search``.
+You can check whether elements contain a pattern:
 
-In version 0.13, ``match`` performs its old, deprecated behavior by default,
-but the new behavior is availabe through the keyword argument
-``as_indexer=True``.
+.. ipython:: python
+
+   pattern = r'[a-z][0-9]'
+   Series(['1', '2', '3a', '3b', '03c']).str.contains(pattern)
+
+or match a pattern:
+
+
+.. ipython:: python
+
+   Series(['1', '2', '3a', '3b', '03c']).str.match(pattern, as_indexer=True)
+
+The distinction between ``match`` and ``contains`` is strictness: ``match`` 
+relies on strict ``re.match``, while ``contains`` relies on ``re.search``.
+
+.. warning::
+
+   In previous versions, ``match`` was for *extracting* groups,
+   returning a not-so-convenient Series of tuples. The new method ``extract``
+   (described in the previous section) is now preferred.
+
+   This old, deprecated behavior of ``match`` is still the default. As
+   demonstrated above, use the new behavior by setting ``as_indexer=True``.
+   In this mode, ``match`` is analagous to ``contains``, returning a boolean
+   Series. The new behavior will become the default behavior in a future 
+   release.
 
 Methods like ``match``, ``contains``, ``startswith``, and ``endswith`` take
  an extra ``na`` arguement so missing values can be considered True or False:
@@ -1456,6 +1473,21 @@ It's also possible to reset multiple options at once (using a regex):
 
    reset_option("^display")
 
+
+.. versionadded:: 0.13.1
+
+   Beginning with v0.13.1 the `option_context` context manager has been exposed through
+   the top-level API, allowing you to execute code with given option values. Option values
+   are restored automatically when you exit the `with` block:
+
+.. ipython:: python
+
+   with option_context("display.max_rows",10,"display.max_columns", 5):
+      print get_option("display.max_rows")
+      print get_option("display.max_columns")
+
+   print get_option("display.max_rows")
+   print get_option("display.max_columns")
 
 
 Console Output Formatting

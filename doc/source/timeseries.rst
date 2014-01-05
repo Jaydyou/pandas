@@ -11,6 +11,7 @@
    randn = np.random.randn
    randint = np.random.randint
    np.set_printoptions(precision=4, suppress=True)
+   options.display.max_rows=15
    from dateutil.relativedelta import relativedelta
    from pandas.tseries.api import *
    from pandas.tseries.offsets import *
@@ -1115,7 +1116,7 @@ Localization of Timestamps functions just like DatetimeIndex and TimeSeries:
    rng[5].tz_localize('Asia/Shanghai')
 
 
-Operations between TimeSeries in difficult time zones will yield UTC
+Operations between TimeSeries in different time zones will yield UTC
 TimeSeries, aligning the data on the UTC timestamps:
 
 .. ipython:: python
@@ -1246,7 +1247,7 @@ Time Deltas & Reductions
 
 .. warning::
 
-   A numeric reduction operation for ``timedelta64[ns]`` will return a single-element ``Series`` of
+   A numeric reduction operation for ``timedelta64[ns]`` can return a single-element ``Series`` of
    dtype ``timedelta64[ns]``.
 
 You can do numeric reduction operations on timedeltas.

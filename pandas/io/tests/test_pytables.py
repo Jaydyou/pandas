@@ -1,5 +1,4 @@
 import nose
-import unittest
 import sys
 import os
 import warnings
@@ -118,7 +117,7 @@ def compat_assert_produces_warning(w,f):
             f()
 
 
-class TestHDFStore(unittest.TestCase):
+class TestHDFStore(tm.TestCase):
 
     def setUp(self):
         warnings.filterwarnings(action='ignore', category=FutureWarning)
@@ -1328,6 +1327,52 @@ class TestHDFStore(unittest.TestCase):
                     df_dc.string == 'foo')]
             tm.assert_frame_equal(result, expected)
 
+        with ensure_clean_store(self.path) as store:
+            # doc example part 2
+            np.random.seed(1234)
+            index = date_range('1/1/2000', periods=8)
+            df_dc = DataFrame(np.random.randn(8, 3), index=index,
+                              columns=['A', 'B', 'C'])
+            df_dc['string'] = 'foo'
+            df_dc.ix[4:6,'string'] = np.nan
+            df_dc.ix[7:9,'string'] = 'bar'
+            df_dc.ix[:,['B','C']] = df_dc.ix[:,['B','C']].abs()
+            df_dc['string2'] = 'cool'
+
+            # on-disk operations
+            store.append('df_dc', df_dc, data_columns = ['B', 'C', 'string', 'string2'])
+
+            result = store.select('df_dc', [ Term('B>0') ])
+            expected = df_dc[df_dc.B>0]
+            tm.assert_frame_equal(result,expected)
+
+            result = store.select('df_dc', ['B > 0', 'C > 0', 'string == "foo"'])
+            expected = df_dc[(df_dc.B > 0) & (df_dc.C > 0) & (df_dc.string == 'foo')]
+            tm.assert_frame_equal(result,expected)
+
+        with ensure_clean_store(self.path) as store:
+            # panel
+            # GH5717 not handling data_columns
+            np.random.seed(1234)
+            p = tm.makePanel()
+
+            store.append('p1',p)
+            tm.assert_panel_equal(store.select('p1'),p)
+
+            store.append('p2',p,data_columns=True)
+            tm.assert_panel_equal(store.select('p2'),p)
+
+            result = store.select('p2',where='ItemA>0')
+            expected = p.to_frame()
+            expected = expected[expected['ItemA']>0]
+            tm.assert_frame_equal(result.to_frame(),expected)
+
+            result = store.select('p2',where='ItemA>0 & minor_axis=["A","B"]')
+            expected = p.to_frame()
+            expected = expected[expected['ItemA']>0]
+            expected = expected[expected.reset_index(level=['major']).index.isin(['A','B'])]
+            tm.assert_frame_equal(result.to_frame(),expected)
+
     def test_create_table_index(self):
 
         with ensure_clean_store(self.path) as store:
@@ -1572,6 +1617,51 @@ class TestHDFStore(unittest.TestCase):
 
             store.put('df1',df,format='table')
             tm.assert_frame_equal(store['df1'],df,check_index_type=True,check_column_type=True)
+
+    def test_store_multiindex(self):
+
+        # validate multi-index names
+        # GH 5527
+        with ensure_clean_store(self.path) as store:
+
+            def make_index(names=None):
+                return MultiIndex.from_tuples([( datetime.datetime(2013,12,d), s, t) for d in range(1,3) for s in range(2) for t in range(3)],
+                                              names=names)
+
+
+            # no names
+            _maybe_remove(store, 'df')
+            df = DataFrame(np.zeros((12,2)), columns=['a','b'], index=make_index())
+            store.append('df',df)
+            tm.assert_frame_equal(store.select('df'),df)
+
+            # partial names
+            _maybe_remove(store, 'df')
+            df = DataFrame(np.zeros((12,2)), columns=['a','b'], index=make_index(['date',None,None]))
+            store.append('df',df)
+            tm.assert_frame_equal(store.select('df'),df)
+
+            # series
+            _maybe_remove(store, 's')
+            s = Series(np.zeros(12), index=make_index(['date',None,None]))
+            store.append('s',s)
+            tm.assert_series_equal(store.select('s'),s)
+
+            # dup with column
+            _maybe_remove(store, 'df')
+            df = DataFrame(np.zeros((12,2)), columns=['a','b'], index=make_index(['date','a','t']))
+            self.assertRaises(ValueError, store.append, 'df',df)
+
+            # dup within level
+            _maybe_remove(store, 'df')
+            df = DataFrame(np.zeros((12,2)), columns=['a','b'], index=make_index(['date','date','date']))
+            self.assertRaises(ValueError, store.append, 'df',df)
+
+            # fully names
+            _maybe_remove(store, 'df')
+            df = DataFrame(np.zeros((12,2)), columns=['a','b'], index=make_index(['date','s','t']))
+            store.append('df',df)
+            tm.assert_frame_equal(store.select('df'),df)
 
     def test_pass_spec_to_storer(self):
 
@@ -2255,6 +2345,30 @@ class TestHDFStore(unittest.TestCase):
             store.remove('wp', Term('major_axis>20000103'))
             result = store.select('wp')
             expected = wp.loc[:,wp.major_axis<=Timestamp('20000103'),:]
+            assert_panel_equal(result, expected)
+
+        with ensure_clean_store(self.path) as store:
+
+            wp = Panel(np.random.randn(2, 5, 4), items=['Item1', 'Item2'],
+                       major_axis=date_range('1/1/2000', periods=5),
+                       minor_axis=['A', 'B', 'C', 'D'])
+            store.append('wp',wp)
+
+            # stringified datetimes
+            result = store.select('wp', [Term('major_axis','>',datetime.datetime(2000,1,2))])
+            expected = wp.loc[:,wp.major_axis>Timestamp('20000102')]
+            assert_panel_equal(result, expected)
+
+            result = store.select('wp', [Term('major_axis','>',datetime.datetime(2000,1,2,0,0))])
+            expected = wp.loc[:,wp.major_axis>Timestamp('20000102')]
+            assert_panel_equal(result, expected)
+
+            result = store.select('wp', [Term('major_axis','=',[datetime.datetime(2000,1,2,0,0),datetime.datetime(2000,1,3,0,0)])])
+            expected = wp.loc[:,[Timestamp('20000102'),Timestamp('20000103')]]
+            assert_panel_equal(result, expected)
+
+            result = store.select('wp', [Term('minor_axis','=',['A','B'])])
+            expected = wp.loc[:,:,['A','B']]
             assert_panel_equal(result, expected)
 
     def test_same_name_scoping(self):
@@ -3732,7 +3846,7 @@ class TestHDFStore(unittest.TestCase):
 
                 if new_f is None:
                     import tempfile
-                    new_f = tempfile.mkstemp()[1]
+                    fd, new_f = tempfile.mkstemp()
 
                 tstore = store.copy(new_f, keys = keys, propindexes = propindexes, **kwargs)
 
@@ -3758,6 +3872,10 @@ class TestHDFStore(unittest.TestCase):
             finally:
                 safe_close(store)
                 safe_close(tstore)
+                try:
+                    os.close(fd)
+                except:
+                    pass
                 safe_remove(new_f)
 
         do_copy()

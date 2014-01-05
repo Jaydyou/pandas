@@ -145,6 +145,48 @@ df = DataFrame(randn(100, 10))
 frame_to_string_floats = Benchmark('df.to_string()', setup,
                                    start_date=datetime(2010, 6, 1))
 
+#----------------------------------------------------------------------
+# to_html
+
+setup = common_setup + """
+nrows=500
+df = DataFrame(randn(nrows, 10))
+df[0]=period_range("2000","2010",nrows)
+df[1]=range(nrows)
+
+"""
+
+frame_to_html_mixed = Benchmark('df.to_html()', setup,
+                                   start_date=datetime(2011, 11, 18))
+
+
+# truncated repr_html, single index
+
+setup = common_setup + """
+nrows=10000
+data=randn(nrows,10)
+idx=MultiIndex.from_arrays(np.tile(randn(3,nrows/100),100))
+df=DataFrame(data,index=idx)
+
+"""
+
+frame_html_repr_trunc_mi = Benchmark('df._repr_html_()', setup,
+                                   start_date=datetime(2013, 11, 25))
+
+# truncated repr_html, MultiIndex
+
+setup = common_setup + """
+nrows=10000
+data=randn(nrows,10)
+idx=randn(nrows)
+df=DataFrame(data,index=idx)
+
+"""
+
+frame_html_repr_trunc_si = Benchmark('df._repr_html_()', setup,
+                                   start_date=datetime(2013, 11, 25))
+
+
 # insert many columns
 
 setup = common_setup + """
@@ -245,5 +287,42 @@ data = np.random.randn(1000, 1000)
 df = DataFrame(data)
 """
 frame_isnull  = Benchmark('isnull(df)', setup,
+                           start_date=datetime(2012,1,1))
+
+## dropna
+setup = common_setup + """
+data = np.random.randn(10000, 1000)
+df = DataFrame(data)
+df.ix[50:1000,20:50] = np.nan
+df.ix[2000:3000] = np.nan
+df.ix[:,60:70] = np.nan
+"""
+frame_dropna_axis0_any  = Benchmark('df.dropna(how="any",axis=0)', setup,
+                                     start_date=datetime(2012,1,1))
+frame_dropna_axis0_all  = Benchmark('df.dropna(how="all",axis=0)', setup,
+                                     start_date=datetime(2012,1,1))
+
+setup = common_setup + """
+data = np.random.randn(10000, 1000)
+df = DataFrame(data)
+df.ix[50:1000,20:50] = np.nan
+df.ix[2000:3000] = np.nan
+df.ix[:,60:70] = np.nan
+"""
+frame_dropna_axis1_any  = Benchmark('df.dropna(how="any",axis=1)', setup,
+                                    start_date=datetime(2012,1,1))
+
+frame_dropna_axis1_all  = Benchmark('df.dropna(how="all",axis=1)', setup,
+                                    start_date=datetime(2012,1,1))
+
+
+#----------------------------------------------------------------------
+# apply
+
+setup = common_setup + """
+s = Series(np.arange(1028.))
+df = DataFrame({ i:s for i in range(1028) })
+"""
+frame_apply_user_func = Benchmark('df.apply(lambda x: np.corrcoef(x,s)[0,1])', setup,
                            start_date=datetime(2012,1,1))
 

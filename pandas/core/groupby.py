@@ -18,9 +18,13 @@ from pandas.core.panel import Panel
 from pandas.util.decorators import cache_readonly, Appender
 import pandas.core.algorithms as algos
 import pandas.core.common as com
-from pandas.core.common import _possibly_downcast_to_dtype, isnull, notnull
+from pandas.core.common import(_possibly_downcast_to_dtype, isnull,
+                               notnull, _DATELIKE_DTYPES, is_numeric_dtype,
+                               is_timedelta64_dtype, is_datetime64_dtype)
 
+from pandas import _np_version_under1p7
 import pandas.lib as lib
+from pandas.lib import Timestamp
 import pandas.algos as _algos
 import pandas.hashtable as _hash
 
@@ -50,13 +54,31 @@ aggregated : DataFrame
 # forwarding methods from NDFrames
 _plotting_methods = frozenset(['plot', 'boxplot', 'hist'])
 
-_apply_whitelist = frozenset(['last', 'first',
-                              'mean', 'sum', 'min', 'max',
-                              'cumsum', 'cumprod', 'cummin', 'cummax',
-                              'resample',
-                              'describe',
-                              'rank', 'quantile', 'count',
-                              'fillna', 'dtype']) | _plotting_methods
+_common_apply_whitelist = frozenset([
+    'last', 'first',
+    'head', 'tail', 'median',
+    'mean', 'sum', 'min', 'max',
+    'cumsum', 'cumprod', 'cummin', 'cummax', 'cumcount',
+    'resample',
+    'describe',
+    'rank', 'quantile', 'count',
+    'fillna',
+    'mad',
+    'any', 'all',
+    'irow', 'take',
+    'idxmax', 'idxmin',
+    'shift', 'tshift',
+    'ffill', 'bfill',
+    'pct_change', 'skew',
+    'corr', 'cov', 'diff',
+]) | _plotting_methods
+
+_series_apply_whitelist = \
+    (_common_apply_whitelist - set(['boxplot'])) | \
+    frozenset(['dtype', 'value_counts'])
+
+_dataframe_apply_whitelist = \
+    _common_apply_whitelist | frozenset(['dtypes', 'corrwith'])
 
 
 class GroupByError(Exception):
@@ -185,6 +207,7 @@ class GroupBy(PandasObject):
     len(grouped) : int
         Number of groups
     """
+    _apply_whitelist = _common_apply_whitelist
 
     def __init__(self, obj, keys=None, axis=0, level=None,
                  grouper=None, exclusions=None, selection=None, as_index=True,
@@ -226,6 +249,7 @@ class GroupBy(PandasObject):
 
     @property
     def groups(self):
+        """ dict {group name -> group labels} """
         return self.grouper.groups
 
     @property
@@ -234,7 +258,18 @@ class GroupBy(PandasObject):
 
     @property
     def indices(self):
+        """ dict {group name -> group indices} """
         return self.grouper.indices
+
+    def _get_index(self, name):
+        """ safe get index """
+        try:
+            return self.indices[name]
+        except:
+            if isinstance(name, Timestamp):
+                name = name.value
+                return self.indices[name]
+            raise
 
     @property
     def name(self):
@@ -250,7 +285,7 @@ class GroupBy(PandasObject):
         return self._selection
 
     def _local_dir(self):
-        return sorted(set(self.obj._local_dir() + list(_apply_whitelist)))
+        return sorted(set(self.obj._local_dir() + list(self._apply_whitelist)))
 
     def __getattr__(self, attr):
         if attr in self.obj:
@@ -266,7 +301,7 @@ class GroupBy(PandasObject):
         raise NotImplementedError
 
     def _make_wrapper(self, name):
-        if name not in _apply_whitelist:
+        if name not in self._apply_whitelist:
             is_callable = callable(getattr(self.obj, name, None))
             kind = ' callable ' if is_callable else ' '
             msg = ("Cannot access{0}attribute {1!r} of {2!r} objects, try "
@@ -310,10 +345,26 @@ class GroupBy(PandasObject):
         return wrapper
 
     def get_group(self, name, obj=None):
+        """
+        Constructs NDFrame from group with provided name
+
+        Parameters
+        ----------
+        name : object
+            the name of the group to get as a DataFrame
+        obj : NDFrame, default None
+            the NDFrame to take the DataFrame out of.  If
+            it is None, the object groupby was called on will
+            be used
+
+        Returns
+        -------
+        group : type of obj
+        """
         if obj is None:
             obj = self.obj
 
-        inds = self.indices[name]
+        inds = self._get_index(name)
         return obj.take(inds, axis=self.axis, convert=False)
 
     def __iter__(self):
@@ -613,9 +664,9 @@ class GroupBy(PandasObject):
         original = self.obj.index
         gp = self.grouper
         levels = chain((gp.levels[i][gp.labels[i][b]]
-                            for i in range(len(gp.groupings))),
-                        (original.get_level_values(i)[b]
-                            for i in range(original.nlevels)))
+                        for i in range(len(gp.groupings))),
+                       (original.get_level_values(i)[b]
+                        for i in range(original.nlevels)))
         new = MultiIndex.from_arrays(list(levels))
         new.names = gp.names + original.names
         return new
@@ -639,7 +690,7 @@ class GroupBy(PandasObject):
     def _cython_agg_general(self, how, numeric_only=True):
         output = {}
         for name, obj in self._iterate_slices():
-            is_numeric = _is_numeric_dtype(obj.dtype)
+            is_numeric = is_numeric_dtype(obj.dtype)
             if numeric_only and not is_numeric:
                 continue
 
@@ -677,7 +728,7 @@ class GroupBy(PandasObject):
 
                 # since we are masking, make sure that we have a float object
                 values = result
-                if _is_numeric_dtype(values.dtype):
+                if is_numeric_dtype(values.dtype):
                     values = com.ensure_float(values)
 
                 output[name] = self._try_cast(values[mask], result)
@@ -838,6 +889,7 @@ class Grouper(object):
 
     @cache_readonly
     def indices(self):
+        """ dict {group name -> group indices} """
         if len(self.groupings) == 1:
             return self.groupings[0].indices
         else:
@@ -884,6 +936,7 @@ class Grouper(object):
 
     @cache_readonly
     def groups(self):
+        """ dict {group name -> group labels} """
         if len(self.groupings) == 1:
             return self.groupings[0].groups
         else:
@@ -1041,7 +1094,7 @@ class Grouper(object):
                 raise NotImplementedError
             out_shape = (self.ngroups,) + values.shape[1:]
 
-        if _is_numeric_dtype(values.dtype):
+        if is_numeric_dtype(values.dtype):
             values = com.ensure_float(values)
             is_numeric = True
         else:
@@ -1435,6 +1488,15 @@ class Grouping(object):
                     self.grouper = None  # Try for sanity
                     raise AssertionError(errmsg)
 
+        # if we have a date/time-like grouper, make sure that we have Timestamps like
+        if getattr(self.grouper,'dtype',None) is not None:
+            if is_datetime64_dtype(self.grouper):
+                from pandas import to_datetime
+                self.grouper = to_datetime(self.grouper)
+            elif is_timedelta64_dtype(self.grouper):
+                from pandas import to_timedelta
+                self.grouper = to_timedelta(self.grouper)
+
     def __repr__(self):
         return 'Grouping(%s)' % self.name
 
@@ -1585,6 +1647,7 @@ def _convert_grouper(axis, grouper):
 
 
 class SeriesGroupBy(GroupBy):
+    _apply_whitelist = _series_apply_whitelist
 
     def aggregate(self, func_or_funcs, *args, **kwargs):
         """
@@ -1781,7 +1844,7 @@ class SeriesGroupBy(GroupBy):
             # need to do a safe put here, as the dtype may be different
             # this needs to be an ndarray
             result = Series(result)
-            result.iloc[self.indices[name]] = res
+            result.iloc[self._get_index(name)] = res
             result = result.values
 
         # downcast if we can (and need)
@@ -1820,7 +1883,7 @@ class SeriesGroupBy(GroupBy):
             return b and notnull(b)
 
         try:
-            indices = [self.indices[name] if true_and_notnull(group) else []
+            indices = [self._get_index(name) if true_and_notnull(group) else []
                        for name, group in self]
         except ValueError:
             raise TypeError("the filter must return a boolean result")
@@ -1881,7 +1944,7 @@ class NDFrameGroupBy(GroupBy):
         for block in data.blocks:
             values = block.values
 
-            is_numeric = _is_numeric_dtype(values.dtype)
+            is_numeric = is_numeric_dtype(values.dtype)
 
             if numeric_only and not is_numeric:
                 continue
@@ -2122,11 +2185,29 @@ class NDFrameGroupBy(GroupBy):
                 else:
                     key_index = Index(keys, name=key_names[0])
 
-            if isinstance(values[0], (np.ndarray, Series)):
-                if isinstance(values[0], Series):
+            # make Nones an empty object
+            if com._count_not_none(*values) != len(values):
+                v = None
+                for v in values:
+                    if v is not None:
+                        break
+                if v is None:
+                    return DataFrame()
+                elif isinstance(v, NDFrame):
+                    values = [
+                        x if x is not None else
+                        v._constructor(**v._construct_axes_dict())
+                        for x in values
+                        ]
+
+            v = values[0]
+
+            if isinstance(v, (np.ndarray, Series)):
+                if isinstance(v, Series):
                     applied_index = self.obj._get_axis(self.axis)
-                    all_indexed_same = _all_indexes_same([x.index
-                                                          for x in values])
+                    all_indexed_same = _all_indexes_same([
+                        x.index for x in values
+                    ])
                     singular_series = (len(values) == 1 and
                                        applied_index.nlevels == 1)
 
@@ -2163,27 +2244,35 @@ class NDFrameGroupBy(GroupBy):
                 try:
                     if self.axis == 0:
 
-                        stacked_values = np.vstack([np.asarray(x)
-                                                    for x in values])
-                        columns = values[0].index
-                        index = key_index
+                        # normally use vstack as its faster than concat
+                        # and if we have mi-columns
+                        if not _np_version_under1p7 or isinstance(v.index,MultiIndex):
+                            stacked_values = np.vstack([np.asarray(x) for x in values])
+                            result = DataFrame(stacked_values,index=key_index,columns=v.index)
+                        else:
+                            # GH5788 instead of stacking; concat gets the dtypes correct
+                            from pandas.tools.merge import concat
+                            result = concat(values,keys=key_index,names=key_index.names,
+                                            axis=self.axis).unstack()
                     else:
-                        stacked_values = np.vstack([np.asarray(x)
-                                                    for x in values]).T
-
-                        index = values[0].index
-                        columns = key_index
+                        stacked_values = np.vstack([np.asarray(x) for x in values])
+                        result = DataFrame(stacked_values.T,index=v.index,columns=key_index)
 
                 except (ValueError, AttributeError):
                     # GH1738: values is list of arrays of unequal lengths fall
                     # through to the outer else caluse
                     return Series(values, index=key_index)
 
-                return DataFrame(stacked_values, index=index,
-                                 columns=columns).convert_objects()
+                # if we have date/time like in the original, then coerce dates
+                # as we are stacking can easily have object dtypes here
+                cd = 'coerce' if self.obj.ndim == 2 and self.obj.dtypes.isin(_DATELIKE_DTYPES).any() else True
+                return result.convert_objects(convert_dates=cd)
 
             else:
-                return Series(values, index=key_index)
+                # only coerce dates if we find at least 1 datetime
+                cd = 'coerce' if any([ isinstance(v,Timestamp) for v in values ]) else False
+                return Series(values, index=key_index).convert_objects(convert_dates=cd)
+
         else:
             # Handle cases like BinGrouper
             return self._concat_objects(keys, values,
@@ -2348,7 +2437,7 @@ class NDFrameGroupBy(GroupBy):
                 res = path(group)
 
             def add_indices():
-                indices.append(self.indices[name])
+                indices.append(self._get_index(name))
 
             # interpret the result of the filter
             if isinstance(res, (bool, np.bool_)):
@@ -2369,6 +2458,7 @@ class NDFrameGroupBy(GroupBy):
 
 
 class DataFrameGroupBy(NDFrameGroupBy):
+    _apply_whitelist = _dataframe_apply_whitelist
 
     _block_agg_axis = 1
 
@@ -2906,12 +2996,6 @@ _cython_table = {
     np.var: 'var',
     np.median: 'median'
 }
-
-
-def _is_numeric_dtype(dt):
-    typ = dt.type
-    return (issubclass(typ, (np.number, np.bool_))
-            and not issubclass(typ, (np.datetime64, np.timedelta64)))
 
 
 def _intercept_function(func):

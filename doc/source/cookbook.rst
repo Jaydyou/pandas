@@ -10,6 +10,7 @@
    import os
    np.random.seed(123456)
    from pandas import *
+   options.display.max_rows=15
    import pandas as pd
    randn = np.random.randn
    randint = np.random.randint
@@ -316,6 +317,10 @@ The :ref:`Plotting <visualization>` docs.
 `Annotate a time-series plot #2
 <http://stackoverflow.com/questions/17891493/annotating-points-from-a-pandas-dataframe-in-matplotlib-plot>`__
 
+`Generate Embedded plots in excel files using Pandas, Vincent and xlsxwriter
+<http://pandas-xlsxwriter-charts.readthedocs.org/en/latest/introduction.html>`__
+
+
 Data In/Out
 -----------
 
@@ -410,6 +415,9 @@ csv file and creating a store by chunks, with date parsing as well.
 `See here
 <http://stackoverflow.com/questions/16110252/need-to-compare-very-large-files-around-1-5gb-in-python/16110391#16110391>`__
 
+`Creating a store chunk-by-chunk from a csv file
+<http://stackoverflow.com/questions/20428355/appending-column-to-frame-of-hdf-file-in-pandas/20428786#20428786>`__
+
 `Appending to a store, while creating a unique index
 <http://stackoverflow.com/questions/16997048/how-does-one-append-large-amounts-of-data-to-a-pandas-hdfstore-and-get-a-natural/16999397#16999397>`__
 
@@ -421,6 +429,9 @@ csv file and creating a store by chunks, with date parsing as well.
 
 `Groupby on a HDFStore
 <http://stackoverflow.com/questions/15798209/pandas-group-by-query-on-large-data-in-hdfstore>`__
+
+`Counting with a HDFStore
+<http://stackoverflow.com/questions/20497897/converting-dict-of-dicts-into-pandas-dataframe-memory-issues>`__
 
 `Troubleshoot HDFStore exceptions
 <http://stackoverflow.com/questions/15488809/how-to-trouble-shoot-hdfstore-exception-cannot-find-the-correct-atom-type>`__

@@ -317,8 +317,8 @@ class Series(generic.NDFrame):
     def base(self):
         return self.values.base
 
-    def ravel(self):
-        return self.values.ravel()
+    def ravel(self, order='C'):
+        return self.values.ravel(order=order)
 
     def transpose(self):
         """ support for compatiblity """
@@ -481,7 +481,10 @@ class Series(generic.NDFrame):
 
     def __getitem__(self, key):
         try:
-            return self.index.get_value(self, key)
+            result = self.index.get_value(self, key)
+            if isinstance(result, np.ndarray):
+                return self._constructor(result,index=[key]*len(result)).__finalize__(self)
+            return result
         except InvalidIndexError:
             pass
         except (KeyError, ValueError):
@@ -1869,7 +1872,7 @@ class Series(generic.NDFrame):
         Parameters
         ----------
         order: list of int representing new level order.
-               (reference level by number not by key)
+               (reference level by number or key)
         axis: where to reorder levels
 
         Returns
@@ -1990,6 +1993,9 @@ class Series(generic.NDFrame):
         convert_dtype : boolean, default True
             Try to find better dtype for elementwise function results. If
             False, leave as dtype=object
+        args : tuple
+            Positional arguments to pass to function in addition to the value
+        Additional keyword arguments will be passed as keywords to the function
 
         See also
         --------
@@ -2043,7 +2049,7 @@ class Series(generic.NDFrame):
         """
         return False
 
-    @Appender(generic._shared_docs['reindex'] % _shared_doc_kwargs)
+    @Appender(generic._shared_docs['rename'] % _shared_doc_kwargs)
     def rename(self, index=None, **kwargs):
         return super(Series, self).rename(index=index, **kwargs)
 

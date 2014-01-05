@@ -20,6 +20,7 @@
    plt.close('all')
 
    from pandas import *
+   options.display.max_rows=15
    import pandas.util.testing as tm
    clipdf = DataFrame({'A':[1,2,3],'B':[4,5,6],'C':['p','q','r']},
                       index=['x','y','z'])
@@ -31,31 +32,31 @@ IO Tools (Text, CSV, HDF5, ...)
 The Pandas I/O api is a set of top level ``reader`` functions accessed like ``pd.read_csv()`` that generally return a ``pandas``
 object.
 
-    * ``read_csv``
-    * ``read_excel``
-    * ``read_hdf``
-    * ``read_sql``
-    * ``read_json``
-    * ``read_msgpack`` (experimental)
-    * ``read_html``
-    * ``read_gbq`` (experimental)
-    * ``read_stata``
-    * ``read_clipboard``
-    * ``read_pickle``
+    * :ref:`read_csv<io.read_csv_table>`
+    * :ref:`read_excel<io.excel>`
+    * :ref:`read_hdf<io.hdf5>`
+    * :ref:`read_sql<io.sql>`
+    * :ref:`read_json<io.json_reader>`
+    * :ref:`read_msgpack<io.msgpack>` (experimental)
+    * :ref:`read_html<io.read_html>`
+    * :ref:`read_gbq<io.bigquery>` (experimental)
+    * :ref:`read_stata<io.stata_reader>`
+    * :ref:`read_clipboard<io.clipboard>`
+    * :ref:`read_pickle<io.pickle>`
 
 The corresponding ``writer`` functions are object methods that are accessed like ``df.to_csv()``
 
-    * ``to_csv``
-    * ``to_excel``
-    * ``to_hdf``
-    * ``to_sql``
-    * ``to_json``
-    * ``to_msgpack`` (experimental)
-    * ``to_html``
-    * ``to_gbq`` (experimental)
-    * ``to_stata``
-    * ``to_clipboard``
-    * ``to_pickle``
+    * :ref:`to_csv<io.store_in_csv>`
+    * :ref:`to_excel<io.excel>`
+    * :ref:`to_hdf<io.hdf5>`
+    * :ref:`to_sql<io.sql>`
+    * :ref:`to_json<io.json_writer>`
+    * :ref:`to_msgpack<io.msgpack>` (experimental)
+    * :ref:`to_html<io.html>`
+    * :ref:`to_gbq<io.bigquery>` (experimental)
+    * :ref:`to_stata<io.stata_writer>`
+    * :ref:`to_clipboard<io.clipboard>`
+    * :ref:`to_pickle<io.pickle>`
 
 .. _io.read_csv_table:
 
@@ -563,7 +564,7 @@ the corresponding equivalent values will also imply a missing value (in this cas
 ``[5.0,5]`` are recognized as ``NaN``.
 
 To completely override the default values that are recognized as missing, specify ``keep_default_na=False``.
-The default ``NaN`` recognized values are ``['-1.#IND', '1.#QNAN', '1.#IND', '-1.#QNAN', '#N/A N/A', 'NA',
+The default ``NaN`` recognized values are ``['-1.#IND', '1.#QNAN', '1.#IND', '-1.#QNAN', '#N/A','N/A', 'NA',
 '#NA', 'NULL', 'NaN', 'nan']``.
 
 .. code-block:: python
@@ -978,10 +979,10 @@ Specifying ``iterator=True`` will also return the ``TextFileReader`` object:
    os.remove('tmp.sv')
    os.remove('tmp2.sv')
 
+.. _io.store_in_csv:
+
 Writing to CSV format
 ~~~~~~~~~~~~~~~~~~~~~
-
-.. _io.store_in_csv:
 
 The Series and DataFrame objects have an instance method ``to_csv`` which
 allows storing the contents of the object as a comma-separated-values file. The
@@ -1031,13 +1032,14 @@ The Series object also has a ``to_string`` method, but with only the ``buf``,
 ``na_rep``, ``float_format`` arguments. There is also a ``length`` argument
 which, if set to ``True``, will additionally output the length of the Series.
 
+.. _io.json:
 
 JSON
 ----
 
 Read and write ``JSON`` format files and strings.
 
-.. _io.json:
+.. _io.json_writer:
 
 Writing JSON
 ~~~~~~~~~~~~
@@ -1227,6 +1229,8 @@ which can be dealt with by specifying a simple ``default_handler``:
    def my_handler(obj):
       return obj.total_seconds()
    dftd.to_json(default_handler=my_handler)
+
+.. _io.json_reader:
 
 Reading JSON
 ~~~~~~~~~~~~
@@ -1459,6 +1463,8 @@ into a flat table.
 HTML
 ----
 
+.. _io.read_html:
+
 Reading HTML Content
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1467,8 +1473,6 @@ Reading HTML Content
    We **highly encourage** you to read the :ref:`HTML parsing gotchas
    <html-gotchas>` regarding the issues surrounding the
    BeautifulSoup4/html5lib/lxml parsers.
-
-.. _io.read_html:
 
 .. versionadded:: 0.12.0
 
@@ -1616,10 +1620,10 @@ succeeds, the function will return*.
    dfs = read_html(url, 'Metcalf Bank', index_col=0, flavor=['lxml', 'bs4'])
 
 
+.. _io.html:
+
 Writing to HTML files
 ~~~~~~~~~~~~~~~~~~~~~~
-
-.. _io.html:
 
 ``DataFrame`` objects have an instance method ``to_html`` which renders the
 contents of the ``DataFrame`` as an HTML table. The function arguments are as
@@ -1966,9 +1970,16 @@ any pickled pandas object (or any other pickled object) from file:
 
    See: http://docs.python.org/2.7/library/pickle.html
 
+.. warning::
+
+   In 0.13, pickle preserves compatibility with pickles created prior to 0.13. These must
+   be read with ``pd.read_pickle``, rather than the default python ``pickle.load``.
+   See `this question <http://stackoverflow.com/questions/20444593/pandas-compiled-from-source-default-pickle-behavior-changed>`__
+   for a detailed explanation.
+
 .. note::
 
-    These methods were previously ``save`` and ``load``, prior to 0.12.0, and are now deprecated.
+    These methods were previously ``pd.save`` and ``pd.load``, prior to 0.12.0, and are now deprecated.
 
 .. _io.msgpack:
 
@@ -2081,6 +2092,7 @@ dict:
 
 .. ipython:: python
 
+   np.random.seed(1234)
    index = date_range('1/1/2000', periods=8)
    s = Series(randn(5), index=['a', 'b', 'c', 'd', 'e'])
    df = DataFrame(randn(8, 3), index=index,
@@ -2505,6 +2517,7 @@ be data_columns
    df_dc.ix[4:6,'string'] = np.nan
    df_dc.ix[7:9,'string'] = 'bar'
    df_dc['string2'] = 'cool'
+   df_dc.ix[1:3,['B','C']] = 1.0
    df_dc
 
    # on-disk operations
@@ -2512,7 +2525,7 @@ be data_columns
    store.select('df_dc', [ Term('B>0') ])
 
    # getting creative
-   store.select('df_dc', ['B > 0', 'C > 0', 'string == foo'])
+   store.select('df_dc', 'B > 0 & C > 0 & string == foo')
 
    # this is in-memory version of this type of selection
    df_dc[(df_dc.B > 0) & (df_dc.C > 0) & (df_dc.string == 'foo')]

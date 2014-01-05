@@ -209,6 +209,7 @@ class _NDFrameIndexer(object):
                     labels = _safe_append_to_index(index, key)
                     self.obj._data = self.obj.reindex_axis(labels, i)._data
                     self.obj._maybe_update_cacher(clear=True)
+                    self.obj.is_copy=False
 
                     if isinstance(labels, MultiIndex):
                         self.obj.sortlevel(inplace=True)
@@ -419,7 +420,10 @@ class _NDFrameIndexer(object):
             self.obj._maybe_update_cacher(clear=True)
 
     def _align_series(self, indexer, ser):
-        # indexer to assign Series can be tuple or scalar
+        # indexer to assign Series can be tuple, slice, scalar
+        if isinstance(indexer, slice):
+            indexer = tuple([indexer])
+
         if isinstance(indexer, tuple):
 
             aligners = [not _is_null_slice(idx) for idx in indexer]
@@ -829,7 +833,9 @@ class _NDFrameIndexer(object):
 
                         # see GH5553, make sure we use the right indexer
                         new_indexer = np.arange(len(indexer))
-                        new_indexer[cur_indexer] = np.arange(len(result._get_axis(axis)))
+                        new_indexer[cur_indexer] = np.arange(
+                            len(result._get_axis(axis))
+                        )
                         new_indexer[missing_indexer] = -1
 
                     # we have a non_unique selector, need to use the original
@@ -978,7 +984,7 @@ class _NDFrameIndexer(object):
         if isinstance(indexer, slice):
             return self._slice(indexer, axis=axis, typ='iloc')
         else:
-            return self.obj.take(indexer, axis=axis)
+            return self.obj.take(indexer, axis=axis, convert=False)
 
 
 class _IXIndexer(_NDFrameIndexer):
@@ -1038,7 +1044,7 @@ class _LocationIndexer(_NDFrameIndexer):
         if isinstance(indexer, slice):
             return self._slice(indexer, axis=axis, typ='iloc')
         else:
-            return self.obj.take(indexer, axis=axis)
+            return self.obj.take(indexer, axis=axis, convert=False)
 
 
 class _LocIndexer(_LocationIndexer):
@@ -1195,7 +1201,7 @@ class _iLocIndexer(_LocationIndexer):
             return self._slice(slice_obj, axis=axis, raise_on_error=True,
                                typ='iloc')
         else:
-            return self.obj.take(slice_obj, axis=axis)
+            return self.obj.take(slice_obj, axis=axis, convert=False)
 
     def _getitem_axis(self, key, axis=0):
 

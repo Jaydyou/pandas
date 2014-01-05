@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, time
 import operator
 import re
 import csv
-import unittest
 import nose
 import functools
 import itertools
@@ -1872,7 +1871,7 @@ class SafeForSparse(object):
         self.assert_(np.array_equal(with_suffix.columns, expected))
 
 
-class TestDataFrame(unittest.TestCase, CheckIndexing,
+class TestDataFrame(tm.TestCase, CheckIndexing,
                     SafeForSparse):
     klass = DataFrame
 
@@ -3276,6 +3275,15 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         expected = DataFrame([[False,True],[True,False],[False,False],[True,False]],columns=['A','A'])
         assert_frame_equal(result,expected)
 
+        # mixed column selection
+        # GH 5639
+        dfbool = DataFrame({'one' : Series([True, True, False], index=['a', 'b', 'c']),
+                            'two' : Series([False, False, True, False], index=['a', 'b', 'c', 'd']),
+                            'three': Series([False, True, True, True], index=['a', 'b', 'c', 'd'])})
+        expected = pd.concat([dfbool['one'],dfbool['three'],dfbool['one']],axis=1)
+        result = dfbool[['one', 'three', 'one']]
+        check(result,expected)
+
     def test_insert_benchmark(self):
         # from the vb_suite/frame_methods/frame_insert_columns
         N = 10
@@ -4383,6 +4391,41 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
 
         df = DataFrame({'a': ['a', None, 'b']})
         assert_frame_equal(df + df, DataFrame({'a': ['aa', np.nan, 'bb']}))
+
+    def test_operators_boolean(self):
+
+        # GH 5808
+        # empty frames, non-mixed dtype
+
+        result = DataFrame(index=[1]) & DataFrame(index=[1])
+        assert_frame_equal(result,DataFrame(index=[1]))
+
+        result = DataFrame(index=[1]) | DataFrame(index=[1])
+        assert_frame_equal(result,DataFrame(index=[1]))
+
+        result = DataFrame(index=[1]) & DataFrame(index=[1,2])
+        assert_frame_equal(result,DataFrame(index=[1,2]))
+
+        result = DataFrame(index=[1],columns=['A']) & DataFrame(index=[1],columns=['A'])
+        assert_frame_equal(result,DataFrame(index=[1],columns=['A']))
+
+        result = DataFrame(True,index=[1],columns=['A']) & DataFrame(True,index=[1],columns=['A'])
+        assert_frame_equal(result,DataFrame(True,index=[1],columns=['A']))
+
+        result = DataFrame(True,index=[1],columns=['A']) | DataFrame(True,index=[1],columns=['A'])
+        assert_frame_equal(result,DataFrame(True,index=[1],columns=['A']))
+
+        # boolean ops
+        result = DataFrame(1,index=[1],columns=['A']) | DataFrame(True,index=[1],columns=['A'])
+        assert_frame_equal(result,DataFrame(1,index=[1],columns=['A']))
+
+        def f():
+            DataFrame(1.0,index=[1],columns=['A']) | DataFrame(True,index=[1],columns=['A'])
+        self.assertRaises(TypeError, f)
+
+        def f():
+            DataFrame('foo',index=[1],columns=['A']) | DataFrame(True,index=[1],columns=['A'])
+        self.assertRaises(TypeError, f)
 
     def test_operators_none_as_na(self):
         df = DataFrame({"col1": [2, 5.0, 123, None],
@@ -6010,6 +6053,21 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
                           columns=['a', 'a', 'b', 'b'])
         frame.info(buf=io)
 
+    def test_info_shows_column_dtypes(self):
+        dtypes = ['int64', 'float64', 'datetime64[ns]', 'timedelta64[ns]',
+                  'complex128', 'object', 'bool']
+        data = {}
+        n = 10
+        for i, dtype in enumerate(dtypes):
+            data[i] = np.random.randint(2, size=n).astype(dtype)
+        df = DataFrame(data)
+        buf = StringIO()
+        df.info(buf=buf)
+        res = buf.getvalue()
+        for i, dtype in enumerate(dtypes):
+            name = '%d    %d non-null %s' % (i, n, dtype)
+            assert name in res
+
     def test_dtypes(self):
         self.mixed_frame['bool'] = self.mixed_frame['A'] > 0
         result = self.mixed_frame.dtypes
@@ -6144,6 +6202,48 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         df2 = DataFrame()
         result = df1.append(df2)
         expected = df1.copy()
+        assert_frame_equal(result, expected)
+
+    def test_append_dtypes(self):
+
+        # GH 5754
+        # row appends of different dtypes (so need to do by-item)
+        # can sometimes infer the correct type
+
+        df1 = DataFrame({ 'bar' : Timestamp('20130101') }, index=lrange(5))
+        df2 = DataFrame()
+        result = df1.append(df2)
+        expected = df1.copy()
+        assert_frame_equal(result, expected)
+
+        df1 = DataFrame({ 'bar' : Timestamp('20130101') }, index=lrange(1))
+        df2 = DataFrame({ 'bar' : 'foo' }, index=lrange(1,2))
+        result = df1.append(df2)
+        expected = DataFrame({ 'bar' : [ Timestamp('20130101'), 'foo' ]})
+        assert_frame_equal(result, expected)
+
+        df1 = DataFrame({ 'bar' : Timestamp('20130101') }, index=lrange(1))
+        df2 = DataFrame({ 'bar' : np.nan }, index=lrange(1,2))
+        result = df1.append(df2)
+        expected = DataFrame({ 'bar' : Series([ Timestamp('20130101'), np.nan ],dtype='M8[ns]') })
+        assert_frame_equal(result, expected)
+
+        df1 = DataFrame({ 'bar' : Timestamp('20130101') }, index=lrange(1))
+        df2 = DataFrame({ 'bar' : np.nan }, index=lrange(1,2), dtype=object)
+        result = df1.append(df2)
+        expected = DataFrame({ 'bar' : Series([ Timestamp('20130101'), np.nan ],dtype='M8[ns]') })
+        assert_frame_equal(result, expected)
+
+        df1 = DataFrame({ 'bar' : np.nan }, index=lrange(1))
+        df2 = DataFrame({ 'bar' : Timestamp('20130101') }, index=lrange(1,2))
+        result = df1.append(df2)
+        expected = DataFrame({ 'bar' : Series([ np.nan, Timestamp('20130101')] ,dtype='M8[ns]') })
+        assert_frame_equal(result, expected)
+
+        df1 = DataFrame({ 'bar' : Timestamp('20130101') }, index=lrange(1))
+        df2 = DataFrame({ 'bar' : 1 }, index=lrange(1,2), dtype=object)
+        result = df1.append(df2)
+        expected = DataFrame({ 'bar' : Series([ Timestamp('20130101'), 1 ]) })
         assert_frame_equal(result, expected)
 
     def test_asfreq(self):
@@ -6454,6 +6554,15 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         expected = self.tsframe.apply(self.tsframe['A'].corr)
 
         assert_series_equal(result, expected)
+
+    def test_corrwith_matches_corrcoef(self):
+        df1 = DataFrame(np.arange(10000), columns=['a'])
+        df2 = DataFrame(np.arange(10000)**2, columns=['a'])
+        c1 = df1.corrwith(df2)['a']
+        c2 = np.corrcoef(df1['a'],df2['a'])[0][1]
+
+        assert_almost_equal(c1, c2)
+        self.assert_(c1 < 1)
 
     def test_drop_names(self):
         df = DataFrame([[1, 2, 3],[3, 4, 5],[5, 6, 7]], index=['a', 'b', 'c'],
@@ -6807,6 +6916,13 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         assert_frame_equal(nu_df.drop('X', axis='rows'), nu_df.ix[["Y"], :])
         assert_frame_equal(nu_df.drop(['X', 'Y'], axis=0), nu_df.ix[[], :])
 
+        # inplace cache issue
+        # GH 5628
+        df = pd.DataFrame(np.random.randn(10,3), columns=list('abc'))
+        expected = df[~(df.b>0)]
+        df.drop(labels=df[df.b>0].index, inplace=True)
+        assert_frame_equal(df,expected)
+
     def test_fillna(self):
         self.tsframe['A'][:5] = nan
         self.tsframe['A'][-5:] = nan
@@ -6975,6 +7091,7 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         assert_frame_equal(tsframe, self.tsframe.fillna(0))
 
         self.assertRaises(TypeError, self.tsframe.replace, nan, inplace=True)
+        self.assertRaises(TypeError, self.tsframe.replace, nan)
 
         # mixed type
         self.mixed_frame['foo'][5:20] = nan
@@ -9185,6 +9302,46 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
 
         assert_frame_equal(result, expected, check_names=False)  # TODO should reindex check_names?
 
+    def test_reorder_levels(self):
+        index = MultiIndex(levels=[['bar'], ['one', 'two', 'three'], [0, 1]],
+                           labels=[[0, 0, 0, 0, 0, 0],
+                                   [0, 1, 2, 0, 1, 2],
+                                   [0, 1, 0, 1, 0, 1]],
+                           names=['L0', 'L1', 'L2'])
+        df = DataFrame({'A': np.arange(6), 'B': np.arange(6)}, index=index)
+
+        # no change, position
+        result = df.reorder_levels([0, 1, 2])
+        assert_frame_equal(df, result)
+
+        # no change, labels
+        result = df.reorder_levels(['L0', 'L1', 'L2'])
+        assert_frame_equal(df, result)
+
+        # rotate, position
+        result = df.reorder_levels([1, 2, 0])
+        e_idx = MultiIndex(levels=[['one', 'two', 'three'], [0, 1], ['bar']],
+                           labels=[[0, 1, 2, 0, 1, 2],
+                                   [0, 1, 0, 1, 0, 1],
+                                   [0, 0, 0, 0, 0, 0]],
+                           names=['L1', 'L2', 'L0'])
+        expected = DataFrame({'A': np.arange(6), 'B': np.arange(6)},
+                             index=e_idx)
+        assert_frame_equal(result, expected)
+
+        result = df.reorder_levels([0, 0, 0])
+        e_idx = MultiIndex(levels=[['bar'], ['bar'], ['bar']],
+                           labels=[[0, 0, 0, 0, 0, 0],
+                                   [0, 0, 0, 0, 0, 0],
+                                   [0, 0, 0, 0, 0, 0]],
+                           names=['L0', 'L0', 'L0'])
+        expected = DataFrame({'A': np.arange(6), 'B': np.arange(6)},
+                             index=e_idx)
+        assert_frame_equal(result, expected)
+
+        result = df.reorder_levels(['L0', 'L0', 'L0'])
+        assert_frame_equal(result, expected)
+
     def test_sort_index(self):
         frame = DataFrame(np.random.randn(4, 4), index=[1, 2, 3, 4],
                           columns=['A', 'B', 'C', 'D'])
@@ -11069,7 +11226,7 @@ class TestDataFrame(unittest.TestCase, CheckIndexing,
         self.assert_((dm.xs(2) == 5).all())
 
         # prior to chained assignment (GH5390)
-        # this would raise, but now just rrens a copy (and sets _is_copy)
+        # this would raise, but now just returns a copy (and sets is_copy)
         # TODO (?): deal with mixed-type fiasco?
         # with assertRaisesRegexp(TypeError, 'cannot get view of mixed-type'):
         #    self.mixed_frame.xs(self.mixed_frame.index[2], copy=False)
@@ -11551,6 +11708,7 @@ starting,ending,measure
         _check_f(data.copy(), f)
 
         # -----Series-----
+        d = data.copy()['c']
 
         # reset_index
         f = lambda x: x.reset_index(inplace=True, drop=True)
@@ -11558,15 +11716,15 @@ starting,ending,measure
 
         # fillna
         f = lambda x: x.fillna(0, inplace=True)
-        _check_f(data.copy()['c'], f)
+        _check_f(d.copy(), f)
 
         # replace
         f = lambda x: x.replace(1, 0, inplace=True)
-        _check_f(data.copy()['c'], f)
+        _check_f(d.copy(), f)
 
         # rename
         f = lambda x: x.rename({1: 'foo'}, inplace=True)
-        _check_f(data.copy()['c'], f)
+        _check_f(d.copy(), f)
 
     def test_isin(self):
         # GH #4211
@@ -11986,15 +12144,18 @@ class TestDataFrameQueryWithMultiIndex(object):
             pd.eval('p4d + 1', parser=parser, engine=engine)
 
 
-class TestDataFrameQueryNumExprPandas(unittest.TestCase):
+class TestDataFrameQueryNumExprPandas(tm.TestCase):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameQueryNumExprPandas, cls).setUpClass()
         cls.engine = 'numexpr'
         cls.parser = 'pandas'
         skip_if_no_ne()
 
     @classmethod
     def tearDownClass(cls):
+        super(TestDataFrameQueryNumExprPandas, cls).tearDownClass()
         del cls.engine, cls.parser
 
     def test_date_query_method(self):
@@ -12213,16 +12374,14 @@ class TestDataFrameQueryNumExprPandas(unittest.TestCase):
 
 
 class TestDataFrameQueryNumExprPython(TestDataFrameQueryNumExprPandas):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameQueryNumExprPython, cls).setUpClass()
         cls.engine = 'numexpr'
         cls.parser = 'python'
         skip_if_no_ne(cls.engine)
         cls.frame = _frame.copy()
-
-    @classmethod
-    def tearDownClass(cls):
-        del cls.frame, cls.engine, cls.parser
 
     def test_date_query_method(self):
         engine, parser = self.engine, self.parser
@@ -12316,27 +12475,21 @@ class TestDataFrameQueryNumExprPython(TestDataFrameQueryNumExprPandas):
 
 
 class TestDataFrameQueryPythonPandas(TestDataFrameQueryNumExprPandas):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameQueryPythonPandas, cls).setUpClass()
         cls.engine = 'python'
         cls.parser = 'pandas'
         cls.frame = _frame.copy()
 
-    @classmethod
-    def tearDownClass(cls):
-        del cls.frame, cls.engine, cls.parser
-
-
 class TestDataFrameQueryPythonPython(TestDataFrameQueryNumExprPython):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameQueryPythonPython, cls).setUpClass()
         cls.engine = cls.parser = 'python'
         cls.frame = _frame.copy()
-
-    @classmethod
-    def tearDownClass(cls):
-        del cls.frame, cls.engine, cls.parser
-
 
 PARSERS = 'python', 'pandas'
 ENGINES = 'python', 'numexpr'
@@ -12470,16 +12623,14 @@ class TestDataFrameQueryStrings(object):
             yield self.check_object_array_eq_ne, parser, engine
 
 
-class TestDataFrameEvalNumExprPandas(unittest.TestCase):
+class TestDataFrameEvalNumExprPandas(tm.TestCase):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameEvalNumExprPandas, cls).setUpClass()
         cls.engine = 'numexpr'
         cls.parser = 'pandas'
         skip_if_no_ne()
-
-    @classmethod
-    def tearDownClass(cls):
-        del cls.engine, cls.parser
 
     def setUp(self):
         self.frame = DataFrame(randn(10, 3), columns=list('abc'))
@@ -12500,37 +12651,28 @@ class TestDataFrameEvalNumExprPandas(unittest.TestCase):
 
 
 class TestDataFrameEvalNumExprPython(TestDataFrameEvalNumExprPandas):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameEvalNumExprPython, cls).setUpClass()
         cls.engine = 'numexpr'
         cls.parser = 'python'
         skip_if_no_ne()
 
-    @classmethod
-    def tearDownClass(cls):
-        del cls.engine, cls.parser
-
-
 class TestDataFrameEvalPythonPandas(TestDataFrameEvalNumExprPandas):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameEvalPythonPandas, cls).setUpClass()
         cls.engine = 'python'
         cls.parser = 'pandas'
 
-    @classmethod
-    def tearDownClass(cls):
-        del cls.engine, cls.parser
-
-
 class TestDataFrameEvalPythonPython(TestDataFrameEvalNumExprPython):
+
     @classmethod
     def setUpClass(cls):
+        super(TestDataFrameEvalPythonPython, cls).tearDownClass()
         cls.engine = cls.parser = 'python'
-
-    @classmethod
-    def tearDownClass(cls):
-        del cls.engine, cls.parser
-
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],

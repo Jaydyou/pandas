@@ -1,0 +1,42 @@
+.. _whatsnew_0131:
+
+v0.13.1 (???)
+-------------
+
+This is a major release from 0.13.0 and includes a number of API changes, several new features and
+enhancements along with a large number of bug fixes.
+
+Highlights include:
+
+Several experimental features are added, including:
+
+There are several new or updated docs sections including:
+
+- :ref:`Tutorials<tutorials>`, a guide to community developed pandas tutorials.
+- :ref:`Pandas Ecosystem<ecosystem>`, a guide to complementary projects built on top of pandas.
+
+API changes
+~~~~~~~~~~~
+
+Prior Version Deprecations/Changes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These were announced changes in 0.13 or prior that are taking effect as of 0.13.1
+
+Deprecations
+~~~~~~~~~~~~
+
+Enhancements
+~~~~~~~~~~~~
+
+Experimental
+~~~~~~~~~~~~
+
+Bug Fixes
+~~~~~~~~~
+
+See :ref:`V0.13.1 Bug Fixes<release.bug_fixes-0.13.1>` for an extensive list of bugs that have been fixed in 0.13.1.
+
+See the :ref:`full release notes
+<release>` or issue tracker
+on GitHub for a complete list of all API changes, Enhancements and Bug Fixes.

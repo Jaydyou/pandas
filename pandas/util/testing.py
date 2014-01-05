@@ -11,6 +11,7 @@ import inspect
 import os
 import subprocess
 import locale
+import unittest
 
 from datetime import datetime
 from functools import wraps, partial
@@ -51,6 +52,18 @@ Panel4D = panel4d.Panel4D
 N = 30
 K = 4
 _RAISE_NETWORK_ERROR_DEFAULT = False
+
+class TestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        pd.set_option('chained_assignment','raise')
+        #print("setting up: {0}".format(cls))
+
+    @classmethod
+    def tearDownClass(cls):
+        #print("tearing down up: {0}".format(cls))
+        pass
 
 # NOTE: don't pass an NDFrame or index to this function - may not handle it
 # well.
@@ -132,7 +145,8 @@ def check_output(*popenargs, **kwargs):  # shamelessly taken from Python 2.7 sou
     """
     if 'stdout' in kwargs:
         raise ValueError('stdout argument not allowed, it will be overridden.')
-    process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+    process = subprocess.Popen(stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                               *popenargs, **kwargs)
     output, unused_err = process.communicate()
     retcode = process.poll()
     if retcode:
@@ -147,7 +161,7 @@ def _default_locale_getter():
     try:
         raw_locales = check_output(['locale -a'], shell=True)
     except subprocess.CalledProcessError as e:
-        raise type(e)("%s, the 'locale -a' command cannot be foundon your "
+        raise type(e)("%s, the 'locale -a' command cannot be found on your "
                       "system" % e)
     return raw_locales
 
@@ -325,6 +339,7 @@ def ensure_clean(filename=None, return_filelike=False):
         savefig and other functions which want to append extensions.
     """
     filename = filename or ''
+    fd = None
 
     if return_filelike:
         f = tempfile.TemporaryFile(suffix=filename)
@@ -332,17 +347,25 @@ def ensure_clean(filename=None, return_filelike=False):
             yield f
         finally:
             f.close()
-
     else:
-
         # don't generate tempfile if using a path with directory specified
         if len(os.path.dirname(filename)):
             raise ValueError("Can't pass a qualified name to ensure_clean()")
 
         try:
-            filename = tempfile.mkstemp(suffix=filename)[1]
+            fd, filename = tempfile.mkstemp(suffix=filename)
+        except UnicodeEncodeError:
+            import nose
+            raise nose.SkipTest('no unicode file names on this system')
+
+        try:
             yield filename
         finally:
+            try:
+                os.close(fd)
+            except Exception as e:
+                print("Couldn't close file descriptor: %d (file: %s)" %
+                    (fd, filename))
             try:
                 if os.path.exists(filename):
                     os.remove(filename)

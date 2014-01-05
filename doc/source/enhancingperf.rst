@@ -9,6 +9,7 @@
    import csv
    from pandas import DataFrame
    import pandas as pd
+   pd.options.display.max_rows=15
 
    import numpy as np
    np.random.seed(123456)
@@ -440,6 +441,19 @@ The ``DataFrame.eval`` method (Experimental)
 
 In addition to the top level :func:`~pandas.eval` function you can also
 evaluate an expression in the "context" of a ``DataFrame``.
+
+.. ipython:: python
+   :suppress:
+
+   try:
+      del a
+   except NameError:
+      pass
+
+   try:
+      del b
+   except NameError:
+      pass
 
 .. ipython:: python
 

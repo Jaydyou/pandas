@@ -40,14 +40,17 @@ class AmbiguousIndexError(PandasError, KeyError):
 
 
 _POSSIBLY_CAST_DTYPES = set([np.dtype(t)
-                             for t in ['M8[ns]', 'm8[ns]', 'O', 'int8',
+                             for t in ['M8[ns]', '>M8[ns]', '<M8[ns]',
+                                       'm8[ns]', '>m8[ns]', '<m8[ns]',
+                                       'O', 'int8',
                                        'uint8', 'int16', 'uint16', 'int32',
                                        'uint32', 'int64', 'uint64']])
 
 _NS_DTYPE = np.dtype('M8[ns]')
 _TD_DTYPE = np.dtype('m8[ns]')
 _INT64_DTYPE = np.dtype(np.int64)
-_DATELIKE_DTYPES = set([np.dtype(t) for t in ['M8[ns]', 'm8[ns]']])
+_DATELIKE_DTYPES = set([np.dtype(t) for t in ['M8[ns]', '<M8[ns]', '>M8[ns]',
+                                              'm8[ns]', '<m8[ns]', '>m8[ns]']])
 
 
 # define abstract base classes to enable isinstance type checking on our
@@ -1524,17 +1527,22 @@ def _possibly_convert_objects(values, convert_dates=True,
                 values, convert_datetime=convert_dates)
 
     # convert to numeric
-    if convert_numeric and values.dtype == np.object_:
-        try:
-            new_values = lib.maybe_convert_numeric(
-                values, set(), coerce_numeric=True)
+    if values.dtype == np.object_:
+        if convert_numeric:
+            try:
+                new_values = lib.maybe_convert_numeric(
+                    values, set(), coerce_numeric=True)
 
-            # if we are all nans then leave me alone
-            if not isnull(new_values).all():
-                values = new_values
+                # if we are all nans then leave me alone
+                if not isnull(new_values).all():
+                    values = new_values
 
-        except:
-            pass
+            except:
+                pass
+        else:
+
+            # soft-conversion
+            values = lib.maybe_convert_objects(values)
 
     return values
 
@@ -1572,11 +1580,17 @@ def _possibly_cast_to_datetime(value, dtype, coerce=False):
 
             # force the dtype if needed
             if is_datetime64 and dtype != _NS_DTYPE:
-                raise TypeError(
-                    "cannot convert datetimelike to dtype [%s]" % dtype)
+                if dtype.name == 'datetime64[ns]':
+                    dtype = _NS_DTYPE
+                else:
+                    raise TypeError(
+                        "cannot convert datetimelike to dtype [%s]" % dtype)
             elif is_timedelta64 and dtype != _TD_DTYPE:
-                raise TypeError(
-                    "cannot convert timedeltalike to dtype [%s]" % dtype)
+                if dtype.name == 'timedelta64[ns]':
+                    dtype = _TD_DTYPE
+                else:
+                    raise TypeError(
+                        "cannot convert timedeltalike to dtype [%s]" % dtype)
 
             if np.isscalar(value):
                 if value == tslib.iNaT or isnull(value):
@@ -2009,6 +2023,14 @@ def needs_i8_conversion(arr_or_dtype):
             is_timedelta64_dtype(arr_or_dtype))
 
 
+def is_numeric_dtype(arr_or_dtype):
+    if isinstance(arr_or_dtype, np.dtype):
+        tipo = arr_or_dtype.type
+    else:
+        tipo = arr_or_dtype.dtype.type
+    return (issubclass(tipo, (np.number, np.bool_))
+            and not issubclass(tipo, (np.datetime64, np.timedelta64)))
+
 def is_float_dtype(arr_or_dtype):
     if isinstance(arr_or_dtype, np.dtype):
         tipo = arr_or_dtype.type
@@ -2332,11 +2354,11 @@ def _where_compat(mask, arr1, arr2):
     return np.where(mask, arr1, arr2)
 
 
-def sentinal_factory():
-    class Sentinal(object):
+def sentinel_factory():
+    class Sentinel(object):
         pass
 
-    return Sentinal()
+    return Sentinel()
 
 
 def in_interactive_session():

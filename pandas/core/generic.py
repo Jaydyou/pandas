@@ -41,6 +41,10 @@ def is_dictlike(x):
 
 
 def _single_replace(self, to_replace, method, inplace, limit):
+    if self.ndim != 1:
+        raise TypeError('cannot replace {0} with method {1} on a {2}'
+                        .format(to_replace, method, type(self).__name__))
+
     orig_dtype = self.dtype
     result = self if inplace else self.copy()
     fill_f = com._get_fill_func(method)
@@ -55,7 +59,7 @@ def _single_replace(self, to_replace, method, inplace, limit):
                        dtype=self.dtype).__finalize__(self)
 
     if inplace:
-        self._data = result._data
+        self._update_inplace(result._data)
         return
 
     return result
@@ -73,11 +77,11 @@ class NDFrame(PandasObject):
     axes : list
     copy : boolean, default False
     """
-    _internal_names = ['_data', 'name', '_cacher', '_is_copy', '_subtyp',
+    _internal_names = ['_data', 'name', '_cacher', 'is_copy', '_subtyp',
                        '_index', '_default_kind', '_default_fill_value']
     _internal_names_set = set(_internal_names)
     _metadata = []
-    _is_copy = None
+    is_copy = None
 
     def __init__(self, data, axes=None, copy=False, dtype=None,
                  fastpath=False):
@@ -92,7 +96,7 @@ class NDFrame(PandasObject):
                 for i, ax in enumerate(axes):
                     data = data.reindex_axis(ax, axis=i)
 
-        object.__setattr__(self, '_is_copy', False)
+        object.__setattr__(self, 'is_copy', False)
         object.__setattr__(self, '_data', data)
         object.__setattr__(self, '_item_cache', {})
 
@@ -558,9 +562,7 @@ class NDFrame(PandasObject):
             result._clear_item_cache()
 
         if inplace:
-            self._data = result._data
-            self._clear_item_cache()
-
+            self._update_inplace(result._data)
         else:
             return result.__finalize__(self)
 
@@ -719,13 +721,13 @@ class NDFrame(PandasObject):
                 # to avoid definitional recursion
                 # e.g. say fill_value needing _data to be
                 # defined
-                for k in self._internal_names:
+                for k in self._internal_names_set:
                     if k in state:
                         v = state[k]
                         object.__setattr__(self, k, v)
 
                 for k, v in state.items():
-                    if k not in self._internal_names:
+                    if k not in self._internal_names_set:
                         object.__setattr__(self, k, v)
 
             else:
@@ -936,15 +938,22 @@ class NDFrame(PandasObject):
     @classmethod
     def _create_indexer(cls, name, indexer):
         """ create an indexer like _name in the class """
-        iname = '_%s' % name
-        setattr(cls, iname, None)
 
-        def _indexer(self):
-            if getattr(self, iname, None) is None:
-                setattr(self, iname, indexer(self, name))
-            return getattr(self, iname)
+        if getattr(cls, name, None) is None:
+            iname = '_%s' % name
+            setattr(cls, iname, None)
 
-        setattr(cls, name, property(_indexer))
+            def _indexer(self):
+                i = getattr(self, iname)
+                if i is None:
+                    i = indexer(self, name)
+                    setattr(self, iname, i)
+                return i
+
+            setattr(cls, name, property(_indexer))
+
+            # add to our internal names set
+            cls._internal_names_set.add(iname)
 
     def get(self, key, default=None):
         """
@@ -990,12 +999,22 @@ class NDFrame(PandasObject):
             if clear, then clear our cache """
         cacher = getattr(self, '_cacher', None)
         if cacher is not None:
-            try:
-                cacher[1]()._maybe_cache_changed(cacher[0], self)
-            except:
+            ref = cacher[1]()
 
-                # our referant is dead
+            # we are trying to reference a dead referant, hence
+            # a copy
+            if ref is None:
                 del self._cacher
+                self.is_copy = True
+                self._check_setitem_copy(stacklevel=5, t='referant')
+            else:
+                try:
+                    ref._maybe_cache_changed(cacher[0], self)
+                except:
+                    pass
+                if ref.is_copy:
+                    self.is_copy = True
+                    self._check_setitem_copy(stacklevel=5, t='referant')
 
         if clear:
             self._clear_item_cache()
@@ -1010,23 +1029,25 @@ class NDFrame(PandasObject):
         self._data.set(key, value)
         self._clear_item_cache()
 
-    def _setitem_copy(self, copy):
-        """ set the _is_copy of the iiem """
-        self._is_copy = copy
-        return self
+    def _check_setitem_copy(self, stacklevel=4, t='setting'):
+        """ validate if we are doing a settitem on a chained copy.
 
-    def _check_setitem_copy(self):
-        """ validate if we are doing a settitem on a chained copy """
-        if self._is_copy:
+        If you call this function, be sure to set the stacklevel such that the
+        user will see the error *at the level of setting*"""
+        if self.is_copy:
             value = config.get_option('mode.chained_assignment')
 
-            t = ("A value is trying to be set on a copy of a slice from a "
-                 "DataFrame.\nTry using .loc[row_index,col_indexer] = value "
-                 "instead")
+            if t == 'referant':
+                t = ("A value is trying to be set on a copy of a slice from a "
+                     "DataFrame")
+            else:
+                t = ("A value is trying to be set on a copy of a slice from a "
+                     "DataFrame.\nTry using .loc[row_index,col_indexer] = value "
+                     "instead")
             if value == 'raise':
                 raise SettingWithCopyError(t)
             elif value == 'warn':
-                warnings.warn(t, SettingWithCopyWarning)
+                warnings.warn(t, SettingWithCopyWarning, stacklevel=stacklevel)
 
     def __delitem__(self, key):
         """
@@ -1061,7 +1082,7 @@ class NDFrame(PandasObject):
         except KeyError:
             pass
 
-    def take(self, indices, axis=0, convert=True):
+    def take(self, indices, axis=0, convert=True, is_copy=True):
         """
         Analogous to ndarray.take
 
@@ -1070,6 +1091,7 @@ class NDFrame(PandasObject):
         indices : list / array of ints
         axis : int, default 0
         convert : translate neg to pos indices (default)
+        is_copy : mark the returned frame as a copy
 
         Returns
         -------
@@ -1087,12 +1109,17 @@ class NDFrame(PandasObject):
             labels = self._get_axis(axis)
             new_items = labels.take(indices)
             new_data = self._data.reindex_axis(new_items, indexer=indices,
-                                               axis=0)
+                                               axis=baxis)
         else:
             new_data = self._data.take(indices, axis=baxis)
-        return self._constructor(new_data)\
-                   ._setitem_copy(True)\
-                   .__finalize__(self)
+
+        result = self._constructor(new_data).__finalize__(self)
+
+        # maybe set copy if we didn't actually change the index
+        if is_copy and not result._get_axis(axis).equals(self._get_axis(axis)):
+            result.is_copy=is_copy
+
+        return result
 
     # TODO: Check if this was clearer in 0.12
     def select(self, crit, axis=0):
@@ -1204,7 +1231,8 @@ class NDFrame(PandasObject):
         # NOTE: This does *not* call __finalize__ and that's an explicit
         # decision that we may revisit in the future.
         self._reset_cache()
-        self._data = result._data
+        self._clear_item_cache()
+        self._data = getattr(result,'_data',result)
         self._maybe_update_cacher()
 
     def add_prefix(self, prefix):
@@ -1809,23 +1837,24 @@ class NDFrame(PandasObject):
             Method to use for filling holes in reindexed Series
             pad / ffill: propagate last valid observation forward to next valid
             backfill / bfill: use NEXT valid observation to fill gap
-        value : scalar or dict
-            Value to use to fill holes (e.g. 0), alternately a dict of values
-            specifying which value to use for each column (columns not in the
-            dict will not be filled). This value cannot be a list.
+        value : scalar, dict, or Series
+            Value to use to fill holes (e.g. 0), alternately a dict/Series of
+            values specifying which value to use for each index (for a Series) or
+            column (for a DataFrame). (values not in the dict/Series will not be
+            filled). This value cannot be a list.
         axis : {0, 1}, default 0
             0: fill column-by-column
             1: fill row-by-row
         inplace : boolean, default False
             If True, fill in place. Note: this will modify any
             other views on this object, (e.g. a no-copy slice for a column in a
-            DataFrame).  Still returns the object.
+            DataFrame).
         limit : int, default None
             Maximum size gap to forward or backward fill
-        downcast : dict, default is None, a dict of item->dtype of what to
-            downcast if possible, or the string 'infer' which will try to
-            downcast to an appropriate equal type (e.g. float64 to int64 if
-            possible)
+        downcast : dict, default is None
+            a dict of item->dtype of what to downcast if possible,
+            or the string 'infer' which will try to downcast to an appropriate
+            equal type (e.g. float64 to int64 if possible)
 
         See also
         --------
@@ -1884,7 +1913,16 @@ class NDFrame(PandasObject):
 
             if len(self._get_axis(axis)) == 0:
                 return self
-            if isinstance(value, (dict, com.ABCSeries)):
+
+            if self.ndim == 1 and value is not None:
+                if isinstance(value, (dict, com.ABCSeries)):
+                    from pandas import Series
+                    value = Series(value)
+
+                new_data = self._data.fillna(value, inplace=inplace,
+                                             downcast=downcast)
+
+            elif isinstance(value, (dict, com.ABCSeries)):
                 if axis == 1:
                     raise NotImplementedError('Currently only can fill '
                                               'with dict/Series column '
@@ -1896,14 +1934,13 @@ class NDFrame(PandasObject):
                         continue
                     obj = result[k]
                     obj.fillna(v, inplace=True)
-                    obj._maybe_update_cacher()
                 return result
             else:
                 new_data = self._data.fillna(value, inplace=inplace,
                                              downcast=downcast)
 
         if inplace:
-            self._data = new_data
+            self._update_inplace(new_data)
         else:
             return self._constructor(new_data).__finalize__(self)
 
@@ -2030,6 +2067,11 @@ class NDFrame(PandasObject):
         self._consolidate_inplace()
 
         if value is None:
+            # passing a single value that is scalar like
+            # when value is None (GH5319), for compat
+            if not is_dictlike(to_replace) and not is_dictlike(regex):
+                to_replace = [to_replace]
+
             if isinstance(to_replace, (tuple, list)):
                 return _single_replace(self, to_replace, method, inplace,
                                        limit)
@@ -2146,7 +2188,7 @@ class NDFrame(PandasObject):
         new_data = new_data.convert(copy=not inplace, convert_numeric=False)
 
         if inplace:
-            self._data = new_data
+            self._update_inplace(new_data)
         else:
             return self._constructor(new_data).__finalize__(self)
 
@@ -2253,10 +2295,10 @@ class NDFrame(PandasObject):
 
         if inplace:
             if axis == 1:
-                self._data = new_data
+                self._update_inplace(new_data)
                 self = self.T
             else:
-                self._data = new_data
+                self._update_inplace(new_data)
         else:
             res = self._constructor(new_data).__finalize__(self)
         if axis == 1:
@@ -2837,8 +2879,9 @@ class NDFrame(PandasObject):
         if inplace:
             # we may have different type blocks come out of putmask, so
             # reconstruct the block manager
-            self._data = self._data.putmask(cond, other, align=axis is None,
-                                            inplace=True)
+            new_data = self._data.putmask(cond, other, align=axis is None,
+                                          inplace=True)
+            self._update_inplace(new_data)
 
         else:
             new_data = self._data.where(other, cond, align=axis is None,

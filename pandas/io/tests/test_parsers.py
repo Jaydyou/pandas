@@ -6,7 +6,6 @@ import csv
 import os
 import sys
 import re
-import unittest
 import nose
 import platform
 
@@ -683,6 +682,31 @@ Klosterdruckerei\tKlosterdruckerei <Kempten> (1609-1805)\tHochfurstliche Buchhan
             tm.assert_frame_equal(result6,good_compare)
             tm.assert_frame_equal(result7,good_compare)
 
+    def test_default_na_values(self):
+        _NA_VALUES = set(['-1.#IND', '1.#QNAN', '1.#IND', '-1.#QNAN',
+                          '#N/A','N/A', 'NA', '#NA', 'NULL', 'NaN',
+                          'nan', ''])
+
+        nv = len(_NA_VALUES)
+        def f(i, v):
+            if i == 0:
+                buf = ''
+            elif i > 0:
+                buf = ''.join([','] * i)
+
+            buf = "{0}{1}".format(buf,v)
+
+            if i < nv-1:
+                buf = "{0}{1}".format(buf,''.join([','] * (nv-i-1)))
+
+            return buf
+
+        data = StringIO('\n'.join([ f(i, v) for i, v in enumerate(_NA_VALUES) ]))
+
+        expected = DataFrame(np.nan,columns=range(nv),index=range(nv))
+        df = self.read_csv(data, header=None)
+        tm.assert_frame_equal(df, expected)
+
     def test_custom_na_values(self):
         data = """A,B,C
 ignore,this,row
@@ -943,6 +967,22 @@ c,4,5
         self.assert_(np.array_equal(df.columns, lrange(5)))
 
         self.assert_(np.array_equal(df2.columns, names))
+
+    def test_no_header_prefix(self):
+        data = """1,2,3,4,5
+6,7,8,9,10
+11,12,13,14,15
+"""
+        df_pref = self.read_table(StringIO(data), sep=',', prefix='Field',
+                                  header=None)
+
+        expected = [[1, 2, 3, 4, 5.],
+                    [6, 7, 8, 9, 10],
+                    [11, 12, 13, 14, 15]]
+        tm.assert_almost_equal(df_pref.values, expected)
+
+        self.assert_(np.array_equal(df_pref.columns,
+                                    ['Field0', 'Field1', 'Field2', 'Field3', 'Field4']))
 
     def test_header_with_index_col(self):
         data = """foo,1,2,3
@@ -2025,6 +2065,16 @@ a,b,c
                                 header=None, usecols=['b', 'c'])
         tm.assert_frame_equal(result2, result)
 
+
+        # 5766
+        result = self.read_csv(StringIO(data), names=['a', 'b'],
+                               header=None, usecols=[0, 1])
+
+        expected = self.read_csv(StringIO(data), names=['a', 'b', 'c'],
+                                 header=None)
+        expected = expected[['a', 'b']]
+        tm.assert_frame_equal(result, expected)
+
         # length conflict, passed names and usecols disagree
         self.assertRaises(ValueError, self.read_csv, StringIO(data),
                           names=['a', 'b'], usecols=[1], header=None)
@@ -2049,7 +2099,7 @@ a,b,c
         tm.assertRaises(Exception, read_csv, StringIO(data), header=0, names=['a', 'b', 'c', 'd'])
 
 
-class TestPythonParser(ParserTests, unittest.TestCase):
+class TestPythonParser(ParserTests, tm.TestCase):
     def test_negative_skipfooter_raises(self):
         text = """#foo,a,b,c
 #foo,a,b,c
@@ -2364,7 +2414,7 @@ eight,1,2,3"""
                 tm.assert_series_equal(result, expected)
 
 
-class TestFwfColspaceSniffing(unittest.TestCase):
+class TestFwfColspaceSniffing(tm.TestCase):
     def test_full_file(self):
         # File with all values
         test = '''index                             A    B    C
@@ -2464,7 +2514,7 @@ col1~~~~~col2  col3++++++++++++++++++col4
                                                  header=None, encoding='utf8'))
 
 
-class TestCParserHighMemory(ParserTests, unittest.TestCase):
+class TestCParserHighMemory(ParserTests, tm.TestCase):
 
     def read_csv(self, *args, **kwds):
         kwds = kwds.copy()
@@ -2504,7 +2554,7 @@ class TestCParserHighMemory(ParserTests, unittest.TestCase):
         raise nose.SkipTest("Usecols is not supported in C High Memory engine.")
 
 
-class TestCParserLowMemory(ParserTests, unittest.TestCase):
+class TestCParserLowMemory(ParserTests, tm.TestCase):
 
     def read_csv(self, *args, **kwds):
         kwds = kwds.copy()
@@ -2831,7 +2881,7 @@ No,No,No"""
                                                                    engine)):
                     read_csv(StringIO(data), engine=engine, **kwargs)
 
-class TestParseSQL(unittest.TestCase):
+class TestParseSQL(tm.TestCase):
 
     def test_convert_sql_column_floats(self):
         arr = np.array([1.5, None, 3, 4.2], dtype=object)
